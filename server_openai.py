@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+画廊服务器 - 纯OpenAI版本
+只使用直接OpenAI API，不使用任何fallback处理器
+"""
+
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import os
 import json
@@ -8,12 +15,26 @@ import io
 import urllib.parse
 import importlib.util
 import sys
+import time
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 添加chatbot模块
+# 尝试导入直接聊天模块
+try:
+    import direct_chatbot
+    logger.info("已导入direct_chatbot模块")
+    direct_chat_handler = direct_chatbot.get_chat_handler()
+    if direct_chat_handler:
+        logger.info("成功获取direct_chat_handler")
+    else:
+        logger.warning("direct_chat_handler不可用")
+except ImportError as e:
+    logger.error(f"无法导入direct_chatbot模块: {e}")
+    direct_chat_handler = None
+
+# 尝试导入chatbot模块
 try:
     import chatbot
     logger.info("已导入chatbot模块")
@@ -63,7 +84,7 @@ class GalleryHandler(SimpleHTTPRequestHandler):
         # 处理chatbot请求 - 直接内嵌聊天界面
         elif path == '/chatbot':
             try:
-                logger.info("提供简易聊天界面")
+                logger.info("提供聊天界面")
                 
                 # 检查API密钥
                 api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -250,6 +271,14 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 logger.error(f"处理文件请求时出错: {str(e)}")
                 self.send_error(500, str(e))
 
+    def do_OPTIONS(self):
+        """处理OPTIONS请求，支持CORS预检请求"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
     def do_POST(self):
         # 规范化路径以处理各种URL编码问题
         parsed_path = urllib.parse.urlparse(self.path)
@@ -264,25 +293,62 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 content_length = int(self.headers['Content-Length'])
                 post_data = self.rfile.read(content_length)
                 
-                # 解析JSON数据
-                data = json.loads(post_data.decode('utf-8'))
+                # 解析JSON数据，确保使用UTF-8编码
+                try:
+                    data = json.loads(post_data.decode('utf-8'))
+                except UnicodeDecodeError:
+                    # 尝试其他编码
+                    try:
+                        data = json.loads(post_data.decode('latin-1'))
+                    except:
+                        data = {"message": "解码错误"}
+                        logger.error("无法解码POST数据")
+                
+                # 获取消息，确保是字符串
                 message = data.get('message', '')
+                if not isinstance(message, str):
+                    message = str(message)
                 
                 logger.info(f"收到聊天信息: {message}")
                 
-                # 处理聊天消息
-                if chatbot and hasattr(chatbot, 'chat_handler') and chatbot.chat_handler:
-                    # 使用聊天处理器处理消息
+                # 检查处理器可用性
+                direct_chat_available = direct_chat_handler is not None
+                chatbot_available = chatbot and hasattr(chatbot, 'chat_handler') and chatbot.chat_handler is not None
+                
+                logger.info(f"direct_chat可用: {direct_chat_available}, chatbot可用: {chatbot_available}")
+                
+                # 优先使用直接OpenAI处理器
+                if direct_chat_available:
                     try:
-                        response = chatbot.chat_handler.chat(message)
-                        logger.info(f"聊天回复: {response[:50]}...")
+                        logger.info("使用direct_chat_handler处理器")
+                        response = direct_chat_handler.chat(message)
+                        logger.info(f"回复: {response[:50]}...")
                     except Exception as e:
-                        logger.error(f"聊天处理器处理消息失败: {e}")
-                        response = f"抱歉，处理您的消息时出现了问题: {str(e)}"
+                        logger.error(f"direct_chat_handler错误: {e}")
+                        # 回退到chatbot处理器
+                        if chatbot_available:
+                            logger.info("direct_chat失败，尝试使用chatbot处理器")
+                            try:
+                                response = chatbot.chat_handler.chat(message)
+                                logger.info(f"回复: {response[:50]}...")
+                            except Exception as e2:
+                                logger.error(f"chatbot处理器错误: {e2}")
+                                response = f"抱歉，无法连接到OpenAI API: {str(e2)}"
+                        else:
+                            response = f"抱歉，无法连接到OpenAI API: {str(e)}"
+                # 其次尝试使用chatbot
+                elif chatbot_available:
+                    try:
+                        logger.info(f"使用chatbot处理器: {type(chatbot.chat_handler).__name__}")
+                        response = chatbot.chat_handler.chat(message)
+                        logger.info(f"回复: {response[:50]}...")
+                    except Exception as e:
+                        logger.error(f"chatbot处理器错误: {e}")
+                        response = f"抱歉，无法连接到OpenAI API: {str(e)}"
+                # 无可用处理器
                 else:
-                    # 后备回复
-                    response = f"收到您的消息：{message}。感谢您的提问，我会尽力回答。"
-                    logger.warning("聊天处理器不可用，使用后备回复")
+                    response = f"抱歉，当前没有可用的AI处理器来处理您的消息：{message}。请联系管理员配置OpenAI API。"
+                    logger.warning("所有聊天处理器不可用")
                 
                 # 准备响应
                 response_data = {
@@ -291,9 +357,10 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 }
                 
                 # 发送响应
-                response_json = json.dumps(response_data).encode('utf-8')
+                response_json = json.dumps(response_data, ensure_ascii=False).encode('utf-8')
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json; charset=utf-8')
+                self.send_header('Access-Control-Allow-Origin', '*')
                 self.send_header('Content-Length', str(len(response_json)))
                 self.end_headers()
                 self.wfile.write(response_json)
@@ -308,6 +375,7 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 }).encode('utf-8')
                 self.send_response(500)
                 self.send_header('Content-type', 'application/json; charset=utf-8')
+                self.send_header('Access-Control-Allow-Origin', '*')
                 self.send_header('Content-Length', str(len(error_response)))
                 self.end_headers()
                 self.wfile.write(error_response)
@@ -322,16 +390,59 @@ def ensure_chatbot_module():
     global chatbot
     
     if chatbot is not None:
-        return True
+        logger.info(f"检查chatbot.chat_handler: {chatbot.chat_handler is not None}")
+        # 如果chatbot模块存在但chat_handler不存在，尝试创建
+        if not hasattr(chatbot, 'chat_handler') or chatbot.chat_handler is None:
+            logger.info("chatbot模块存在，但chat_handler不存在，尝试创建")
+            try:
+                # 尝试从langchain_helper模块导入
+                from langchain_helper import create_chat_handler
+                chatbot.chat_handler = create_chat_handler()
+                logger.info("成功创建聊天处理器")
+            except Exception as chat_error:
+                logger.error(f"创建聊天处理器失败: {chat_error}")
+                
+                # 如果langchain_helper导入失败，尝试直接使用OpenAI API
+                try:
+                    # 直接使用direct_chatbot模块
+                    if direct_chat_handler:
+                        logger.info("使用direct_chat_handler作为chatbot.chat_handler")
+                        chatbot.chat_handler = direct_chat_handler
+                    else:
+                        # 尝试直接使用OpenAI API
+                        from openai import OpenAI
+                        
+                        class DirectOpenAIChatHandler:
+                            def __init__(self):
+                                self.api_key = os.environ.get("OPENAI_API_KEY")
+                                self.model = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+                                self.client = OpenAI(api_key=self.api_key)
+                                self.messages = [{"role": "system", "content": "你是一个画廊中的智能助手，能够回答关于展示的PDF文档的问题。"}]
+                            
+                            def chat(self, message):
+                                self.messages.append({"role": "user", "content": message})
+                                
+                                completion = self.client.chat.completions.create(
+                                    model=self.model,
+                                    messages=self.messages
+                                )
+                                
+                                response = completion.choices[0].message.content
+                                self.messages.append({"role": "assistant", "content": response})
+                                return response
+                        
+                        chatbot.chat_handler = DirectOpenAIChatHandler()
+                        logger.info("成功创建DirectOpenAIChatHandler")
+                except Exception as direct_error:
+                    logger.error(f"创建DirectOpenAIChatHandler失败: {direct_error}")
+        
+        # 如果chat_handler已存在
+        if hasattr(chatbot, 'chat_handler') and chatbot.chat_handler is not None:
+            logger.info(f"chatbot.chat_handler已存在: {type(chatbot.chat_handler).__name__}")
+            return True
     
+    # 如果chatbot不存在，创建一个新的
     try:
-        # 先检查matplotlib是否可用
-        try:
-            import matplotlib
-            logger.info("matplotlib已安装")
-        except ImportError:
-            logger.warning("matplotlib未安装，chatbot可能无法正常工作")
-            
         # 检查chatbot.py是否存在
         chatbot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'chatbot.py')
         if not os.path.exists(chatbot_path):
@@ -344,8 +455,57 @@ def ensure_chatbot_module():
         sys.modules["chatbot"] = chatbot
         spec.loader.exec_module(chatbot)
         
+        # 如果chatbot模块中还没有chat_handler,尝试直接创建一个
+        if not hasattr(chatbot, 'chat_handler') or chatbot.chat_handler is None:
+            try:
+                # 尝试从langchain_helper模块导入
+                from langchain_helper import create_chat_handler
+                chatbot.chat_handler = create_chat_handler()
+                logger.info("成功创建聊天处理器")
+            except Exception as chat_error:
+                logger.error(f"创建聊天处理器失败: {chat_error}")
+                
+                # 使用direct_chatbot模块
+                if direct_chat_handler:
+                    logger.info("使用direct_chat_handler作为chatbot.chat_handler")
+                    chatbot.chat_handler = direct_chat_handler
+                else:
+                    # 最后一次尝试，创建一个直接处理器
+                    try:
+                        # 强制使用OpenAI
+                        logger.info("尝试直接使用OpenAI API创建处理器")
+                        
+                        from openai import OpenAI
+                        
+                        class DirectOpenAIChatHandler:
+                            def __init__(self):
+                                self.api_key = os.environ.get("OPENAI_API_KEY")
+                                self.model = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+                                self.client = OpenAI(api_key=self.api_key)
+                                self.messages = [{"role": "system", "content": "你是一个画廊中的智能助手，能够回答关于展示的PDF文档的问题。"}]
+                            
+                            def chat(self, message):
+                                self.messages.append({"role": "user", "content": message})
+                                
+                                completion = self.client.chat.completions.create(
+                                    model=self.model,
+                                    messages=self.messages
+                                )
+                                
+                                response = completion.choices[0].message.content
+                                self.messages.append({"role": "assistant", "content": response})
+                                return response
+                        
+                        chatbot.chat_handler = DirectOpenAIChatHandler()
+                        logger.info("成功创建DirectOpenAIChatHandler")
+                        
+                    except Exception as direct_error:
+                        logger.error(f"创建DirectOpenAIChatHandler失败: {direct_error}")
+        
         logger.info("成功动态加载chatbot模块")
-        return True
+        logger.info(f"chat_handler是否存在: {hasattr(chatbot, 'chat_handler') and chatbot.chat_handler is not None}")
+        
+        return hasattr(chatbot, 'chat_handler') and chatbot.chat_handler is not None
     except Exception as e:
         logger.error(f"加载chatbot模块失败: {e}")
         return False

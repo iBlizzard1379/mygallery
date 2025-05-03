@@ -1,0 +1,118 @@
+"""
+简单聊天模块，不依赖外部库，作为后备方案
+"""
+
+import os
+import logging
+import random
+import time
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 预设回复列表
+DEFAULT_RESPONSES = [
+    "我是您的画廊AI助手（本地模式），很高兴为您服务。",
+    "作为画廊的本地AI助手，我可以帮您了解展览内容。",
+    "我作为画廊的本地AI助手，目前只能提供简单功能，因为OpenAI API连接不可用。",
+    "画廊AI助手（本地模式）正在为您服务。API连接问题已被记录，管理员会尽快处理。",
+    "感谢您的提问。画廊AI助手（本地模式）正在尽力为您提供服务。",
+    "作为画廊本地AI助手，我可以回答关于展览和PDF文档的基本问题。",
+    "我是一个运行在本地模式的AI助手，主要负责为画廊访客提供基本服务。",
+    "由于网络或API Key格式问题，我目前在本地模式下运行。OpenAI连接不可用。",
+    "我注意到您的问题。作为画廊的本地AI助手，我会尽力提供相关信息。"
+]
+
+class SimpleChatHandler:
+    """简单聊天处理器，作为OpenAI API不可用时的后备方案"""
+    
+    def __init__(self):
+        """初始化聊天处理器"""
+        self.chat_history = []
+        self.responses = DEFAULT_RESPONSES
+        
+    def chat(self, message: str) -> str:
+        """
+        处理用户消息并返回回复
+        
+        Args:
+            message: 用户输入的消息
+        
+        Returns:
+            系统回复文本
+        """
+        # 确保消息是字符串
+        if not isinstance(message, str):
+            message = str(message)
+            
+        # 检查输入文本是否有无效字符或乱码
+        try:
+            # 尝试解码/编码来规范化字符串
+            message = message.encode('utf-8', errors='ignore').decode('utf-8')
+        except Exception:
+            # 如果处理失败，直接返回一个通用回复
+            return "抱歉，我无法理解您的输入。请再次尝试。"
+        
+        # 记录消息
+        self.chat_history.append({"role": "user", "content": message})
+        
+        # 模拟思考
+        time.sleep(0.5)
+        
+        # 简单的回复逻辑
+        response = self._generate_response(message)
+        
+        # 记录回复
+        self.chat_history.append({"role": "assistant", "content": response})
+        
+        return response
+    
+    def _generate_response(self, message: str) -> str:
+        """
+        生成回复
+        
+        Args:
+            message: 用户输入的消息
+        
+        Returns:
+            回复文本
+        """
+        # 检查是否是问候
+        if any(greeting in message.lower() for greeting in ["你好", "hello", "hi", "嗨", "哈喽", "您好"]):
+            return "您好！我是画廊的AI助手，很高兴为您服务。请问有什么可以帮助您的吗？"
+        
+        # 检查是否询问身份
+        if any(identity in message.lower() for identity in ["你是谁", "你是什么", "介绍自己", "什么模型", "哪个模型"]):
+            return """我是画廊中的本地AI助手，不是连接到OpenAI的大语言模型。
+
+由于连接OpenAI API时遇到问题（可能是网络原因或API Key格式问题），系统切换到了本地回复模式。本模式下，我只能提供预设的回复和基本对话功能。
+
+一旦API连接问题解决，系统会自动切换回OpenAI的GPT模型为您服务。感谢您的理解！"""
+        
+        # 检查是否询问功能
+        if any(function in message.lower() for function in ["你能做什么", "功能", "用途", "帮我", "怎么用"]):
+            return "作为画廊助手，我可以回答关于展览内容的问题，解释艺术品的信息，以及帮助您浏览PDF文档。请随时向我提问。"
+        
+        # 检查是否是感谢
+        if any(thanks in message.lower() for thanks in ["谢谢", "感谢", "thank", "多谢"]):
+            return "不用谢！我很高兴能帮到您。如果还有其他问题，随时可以问我。"
+        
+        # 默认回复
+        return f"我收到了您的消息：\"{message}\"。{random.choice(self.responses)}"
+    
+    def clear_history(self) -> None:
+        """清空聊天历史"""
+        self.chat_history = []
+
+# 创建单例实例
+chat_handler = SimpleChatHandler()
+
+def get_chat_handler():
+    """
+    获取聊天处理器实例
+    
+    Returns:
+        SimpleChatHandler实例
+    """
+    return chat_handler 
