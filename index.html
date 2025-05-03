@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D 画廊长廊</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖼️</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -85,7 +86,10 @@
         <p>S / ↓ - 后退</p>
         <p>A / ← - 左移</p>
         <p>D / → - 右移</p>
-        <p>鼠标 - 视角转动</p>
+        <p>鼠标点击 - 激活视角控制</p>
+        <p>鼠标移动 - 转动视角</p>
+        <p>点击图片/PDF - 查看详情</p>
+        <p>ESC - 关闭视角控制/退出浏览/返回画廊</p>
     </div>
     <div id="loading">正在加载画廊，请稍候...</div>
     <div id="debug"></div>

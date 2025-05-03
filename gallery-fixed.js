@@ -1,6 +1,24 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
+// 全局状态变量
+let isViewingResource = false;
+let currentResource = null;
+let viewerContainer = null;
+let downloadButton = null;
+let closeButton = null;
+let currentFilePath = null;
+let currentFileType = null;
+let originalCameraPosition = null;
+let blurOverlay = null;
+let raycaster = null;
+let mouse = null;
+let clickableObjects = [];
+let controls = null;
+let camera = null;
+// 保存视角方向
+let lastCameraRotation = null;
+
 // 调试功能
 const debugDiv = document.getElementById('debug');
 function log(message) {
@@ -63,8 +81,12 @@ function createGallery() {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
     
+    // 射线检测器和可点击对象
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2();
+    
     // 创建相机
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
     
     // 设置相机位置 - 站在走廊的起点，朝向走廊深处
     camera.position.set(0, 1.7, 2); // x, y, z: 中心线上，人眼高度，靠近入口处
@@ -81,10 +103,42 @@ function createGallery() {
     camera.rotation.copy(euler);
     
     // 现在创建控制器，它将保持相机当前朝向
-    const controls = new PointerLockControls(camera, document.body);
+    controls = new PointerLockControls(camera, document.body);
     
-    // 点击锁定鼠标
-    document.getElementById('container').addEventListener('click', () => {
+    // 点击事件处理
+    document.getElementById('container').addEventListener('click', (event) => {
+        // 如果正在查看资源，忽略点击
+        if (isViewingResource) return;
+        
+        // 如果控制器已锁定，无需处理点击事件（已在3D环境中）
+        if (controls.isLocked) return;
+        
+        // 计算鼠标位置的归一化设备坐标
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        
+        // 设置射线
+        raycaster.setFromCamera(mouse, camera);
+        
+        // 检测射线与可点击对象的交点
+        const intersects = raycaster.intersectObjects(clickableObjects);
+        
+        if (intersects.length > 0) {
+            const object = intersects[0].object;
+            if (object.userData && object.userData.isClickable) {
+                log(`点击了资源: ${object.userData.resourceName}`);
+                
+                // 显示资源查看器
+                showResourceViewer(
+                    object.userData.resourceName,
+                    object.userData.resourceType,
+                    object.userData.filePath
+                );
+                return; // 阻止锁定
+            }
+        }
+        
+        // 如果没有点击物体，锁定控制器
         controls.lock();
     });
     
@@ -94,13 +148,23 @@ function createGallery() {
         document.getElementById('controls').style.display = 'none';
         document.getElementById('debug').style.display = 'none';
         
-        // 在锁定时，确保相机朝向画廊方向
-        setTimeout(() => {
-            resetCameraDirection();
-        }, 50);
+        // 在锁定时，如果有保存的相机方向，则恢复它
+        if (lastCameraRotation && !isViewingResource) {
+            camera.rotation.copy(lastCameraRotation);
+        } else {
+            // 在锁定时，确保相机朝向画廊方向
+            setTimeout(() => {
+                resetCameraDirection();
+            }, 50);
+        }
     });
     
     controls.addEventListener('unlock', () => {
+        // 保存当前相机方向，除非是在查看资源
+        if (!isViewingResource) {
+            lastCameraRotation = camera.rotation.clone();
+        }
+        
         document.getElementById('info').style.display = 'block';
         document.getElementById('controls').style.display = 'block';
         // 不再显示debug窗口
@@ -426,6 +490,17 @@ function createGallery() {
                     picture.rotation.y = Math.PI / 2 * wallFacing;
                     scene.add(picture);
                     
+                    // 为资源添加用户数据，以便识别点击
+                    picture.userData = {
+                        isClickable: true,
+                        resourceName: fileName,
+                        resourceType: isImage ? 'image' : 'pdf',
+                        filePath: `images/${fileName}` // 所有文件都在images目录
+                    };
+                    
+                    // 添加到可点击对象列表
+                    clickableObjects.push(picture);
+                    
                     // 为画框添加聚光灯
                     if (i === 0 || i === numFrames - 1 || i % 2 === 0) {
                         const spotLight = new THREE.SpotLight(0xffffff, 5, 8, Math.PI / 6);
@@ -503,6 +578,16 @@ function createGallery() {
             document.getElementById('loading').style.display = 'block';
             document.getElementById('loading').textContent = '正在初始化画廊...';
             
+            // 创建查看器UI
+            createViewerUI();
+            
+            // 添加ESC键监听
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape' && isViewingResource) {
+                    closeResourceViewer();
+                }
+            });
+            
             // 并行添加图片和文档
             const leftWallPromise = addFramesToWall('left', images, true);
             const rightWallPromise = addFramesToWall('right', documents, false);
@@ -520,6 +605,9 @@ function createGallery() {
             
             // 确保相机朝向画廊方向
             resetCameraDirection();
+            
+            // 显示欢迎和使用说明
+            showWelcomeGuide();
             
             // 如果有失败的文件，显示警告但不阻止画廊显示
             if (totalFailed > 0) {
@@ -610,6 +698,534 @@ function createGallery() {
     initGallery();
     
     return true;
+}
+
+// 创建资源查看器UI
+function createViewerUI() {
+    // 创建模糊叠加层
+    blurOverlay = document.createElement('div');
+    blurOverlay.style.position = 'fixed';
+    blurOverlay.style.top = '0';
+    blurOverlay.style.left = '0';
+    blurOverlay.style.width = '100%';
+    blurOverlay.style.height = '100%';
+    blurOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    blurOverlay.style.backdropFilter = 'blur(10px)';
+    blurOverlay.style.zIndex = '1000';
+    blurOverlay.style.display = 'none';
+    blurOverlay.style.opacity = '0';
+    blurOverlay.style.transition = 'opacity 0.5s ease';
+    document.body.appendChild(blurOverlay);
+
+    // 创建查看器容器
+    viewerContainer = document.createElement('div');
+    viewerContainer.style.position = 'fixed';
+    viewerContainer.style.top = '50%';
+    viewerContainer.style.left = '50%';
+    viewerContainer.style.transform = 'translate(-50%, -50%) scale(0.8)';
+    viewerContainer.style.maxWidth = '95%';
+    viewerContainer.style.maxHeight = '90%';
+    viewerContainer.style.overflow = 'hidden';
+    viewerContainer.style.zIndex = '1001';
+    viewerContainer.style.display = 'none';
+    viewerContainer.style.transition = 'transform 0.5s ease';
+    viewerContainer.style.boxShadow = '0 5px 25px rgba(0,0,0,0.3)';
+    document.body.appendChild(viewerContainer);
+
+    // 创建下载按钮
+    downloadButton = document.createElement('button');
+    downloadButton.textContent = '下载';
+    downloadButton.style.position = 'fixed';
+    downloadButton.style.bottom = '30px';
+    downloadButton.style.left = '50%';
+    downloadButton.style.transform = 'translateX(-50%)';
+    downloadButton.style.padding = '10px 20px';
+    downloadButton.style.backgroundColor = '#4CAF50';
+    downloadButton.style.color = 'white';
+    downloadButton.style.border = 'none';
+    downloadButton.style.borderRadius = '5px';
+    downloadButton.style.cursor = 'pointer';
+    downloadButton.style.zIndex = '1002';
+    downloadButton.style.display = 'none';
+    downloadButton.style.opacity = '0';
+    downloadButton.style.transition = 'opacity 0.5s ease';
+    document.body.appendChild(downloadButton);
+
+    // 创建关闭按钮
+    closeButton = document.createElement('button');
+    closeButton.textContent = '×';
+    closeButton.style.position = 'fixed';
+    closeButton.style.top = '20px';
+    closeButton.style.right = '20px';
+    closeButton.style.width = '40px';
+    closeButton.style.height = '40px';
+    closeButton.style.borderRadius = '50%';
+    closeButton.style.backgroundColor = '#f44336';
+    closeButton.style.color = 'white';
+    closeButton.style.border = 'none';
+    closeButton.style.fontSize = '24px';
+    closeButton.style.cursor = 'pointer';
+    closeButton.style.zIndex = '1002';
+    closeButton.style.display = 'none';
+    closeButton.style.opacity = '0';
+    closeButton.style.transition = 'opacity 0.5s ease';
+    document.body.appendChild(closeButton);
+
+    // 添加下载按钮事件
+    downloadButton.addEventListener('click', function() {
+        if (currentFilePath) {
+            // 创建一个下载链接
+            const link = document.createElement('a');
+            link.href = currentFilePath;
+            link.download = currentResource;
+            
+            // 对于PDF和图片文件的特殊处理
+            if (currentFileType === 'pdf') {
+                // PDF文件，直接下载
+                link.setAttribute('download', currentResource);
+                link.setAttribute('target', '_blank');
+                link.textContent = '下载PDF';
+            } else if (currentFileType === 'image') {
+                // 图片文件
+                link.setAttribute('download', currentResource);
+            }
+            
+            // 触发下载
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // 显示下载提示
+            const downloadMsg = document.createElement('div');
+            downloadMsg.textContent = `正在下载: ${currentResource}`;
+            downloadMsg.style.position = 'fixed';
+            downloadMsg.style.bottom = '80px';
+            downloadMsg.style.left = '50%';
+            downloadMsg.style.transform = 'translateX(-50%)';
+            downloadMsg.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            downloadMsg.style.color = 'white';
+            downloadMsg.style.padding = '10px 20px';
+            downloadMsg.style.borderRadius = '5px';
+            downloadMsg.style.zIndex = '1003';
+            document.body.appendChild(downloadMsg);
+            
+            // 3秒后移除提示
+            setTimeout(() => {
+                document.body.removeChild(downloadMsg);
+            }, 3000);
+        }
+    });
+
+    // 添加关闭按钮事件
+    closeButton.addEventListener('click', closeResourceViewer);
+}
+
+// 显示资源查看器
+function showResourceViewer(resourceName, resourceType, filePath) {
+    if (isViewingResource) return;
+    isViewingResource = true;
+    currentResource = resourceName;
+    currentFilePath = filePath;
+    currentFileType = resourceType;
+    
+    // 解锁指针锁定前保存当前相机方向
+    if (controls.isLocked) {
+        lastCameraRotation = camera.rotation.clone();
+        originalCameraPosition = camera.position.clone();
+        controls.unlock();
+    }
+    
+    // 清空查看器
+    viewerContainer.innerHTML = '';
+    
+    // 根据资源类型显示内容
+    if (resourceType === 'image') {
+        // 创建图片容器
+        const imgContainer = document.createElement('div');
+        imgContainer.style.position = 'relative';
+        imgContainer.style.maxWidth = '100%';
+        imgContainer.style.maxHeight = '100%';
+        imgContainer.style.display = 'flex';
+        imgContainer.style.flexDirection = 'column';
+        imgContainer.style.alignItems = 'center';
+        viewerContainer.appendChild(imgContainer);
+        
+        // 添加标题
+        const imgTitle = document.createElement('div');
+        imgTitle.textContent = resourceName;
+        imgTitle.style.color = 'white';
+        imgTitle.style.fontSize = '18px';
+        imgTitle.style.fontWeight = 'bold';
+        imgTitle.style.marginBottom = '15px';
+        imgTitle.style.textShadow = '0 1px 3px rgba(0,0,0,0.6)';
+        imgContainer.appendChild(imgTitle);
+        
+        // 添加图片
+        const img = document.createElement('img');
+        img.src = filePath;
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = 'calc(80vh - 100px)';
+        img.style.objectFit = 'contain';
+        img.style.display = 'block';
+        img.style.margin = '0 auto';
+        img.style.boxShadow = '0 5px 15px rgba(0,0,0,0.3)';
+        img.style.borderRadius = '3px';
+        imgContainer.appendChild(img);
+        
+        // 添加图片使用说明
+        const imgTips = document.createElement('div');
+        imgTips.style.color = 'white';
+        imgTips.style.marginTop = '15px';
+        imgTips.style.fontSize = '14px';
+        imgTips.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        imgTips.style.padding = '8px 15px';
+        imgTips.style.borderRadius = '5px';
+        imgTips.style.maxWidth = '80%';
+        imgTips.innerHTML = `
+            <p style="margin: 0; text-align: center;">按ESC键或点击右上角×按钮返回画廊，点击下方按钮可下载图片</p>
+        `;
+        imgContainer.appendChild(imgTips);
+    } else if (resourceType === 'pdf') {
+        // 创建PDF预览容器
+        const pdfContainer = document.createElement('div');
+        pdfContainer.style.backgroundColor = 'white';
+        pdfContainer.style.padding = '20px';
+        pdfContainer.style.borderRadius = '10px';
+        pdfContainer.style.width = '900px';
+        pdfContainer.style.maxWidth = '90vw';
+        pdfContainer.style.height = '80vh';
+        pdfContainer.style.maxHeight = '85vh';
+        pdfContainer.style.overflow = 'auto';
+        pdfContainer.style.position = 'relative';
+        viewerContainer.appendChild(pdfContainer);
+        
+        // 添加加载提示
+        const loadingText = document.createElement('div');
+        loadingText.textContent = 'PDF加载中...';
+        loadingText.style.position = 'absolute';
+        loadingText.style.top = '50%';
+        loadingText.style.left = '50%';
+        loadingText.style.transform = 'translate(-50%, -50%)';
+        loadingText.style.color = '#666';
+        loadingText.style.fontSize = '18px';
+        pdfContainer.appendChild(loadingText);
+        
+        // 创建PDF查看器
+        try {
+            // 确保PDF.js库已加载
+            if (window.pdfjsLib) {
+                // 设置workerSrc
+                const pdfjsLib = window.pdfjsLib;
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+                
+                // 加载PDF文件
+                const loadingTask = pdfjsLib.getDocument(filePath);
+                loadingTask.promise.then(function(pdf) {
+                    // 移除加载提示
+                    pdfContainer.removeChild(loadingText);
+                    
+                    // 添加标题
+                    const titleDiv = document.createElement('div');
+                    titleDiv.style.textAlign = 'center';
+                    titleDiv.style.marginBottom = '15px';
+                    titleDiv.style.fontWeight = 'bold';
+                    titleDiv.style.fontSize = '20px';
+                    titleDiv.textContent = resourceName;
+                    pdfContainer.appendChild(titleDiv);
+                    
+                    // 添加阅读指引
+                    const readingTips = document.createElement('div');
+                    readingTips.style.backgroundColor = '#f8f9fa';
+                    readingTips.style.padding = '10px';
+                    readingTips.style.borderRadius = '5px';
+                    readingTips.style.marginBottom = '15px';
+                    readingTips.style.fontSize = '14px';
+                    readingTips.style.color = '#555';
+                    readingTips.innerHTML = `
+                        <p style="margin: 0 0 5px 0"><strong>使用说明：</strong></p>
+                        <ul style="margin: 0 0 5px 20px; padding: 0;">
+                            <li>使用鼠标滚轮浏览所有页面</li>
+                            <li>点击"返回顶部"或"查看结尾"快速导航</li>
+                            <li>按ESC键或点击右上角×按钮返回画廊</li>
+                            <li>点击下方下载按钮可获取完整PDF文件</li>
+                        </ul>
+                    `;
+                    pdfContainer.appendChild(readingTips);
+                    
+                    // 添加快速导航按钮
+                    const navButtons = document.createElement('div');
+                    navButtons.style.display = 'flex';
+                    navButtons.style.justifyContent = 'center';
+                    navButtons.style.gap = '10px';
+                    navButtons.style.marginBottom = '15px';
+                    
+                    // 返回顶部按钮
+                    const topButton = document.createElement('button');
+                    topButton.textContent = '返回顶部';
+                    topButton.style.padding = '5px 10px';
+                    topButton.style.backgroundColor = '#007bff';
+                    topButton.style.color = 'white';
+                    topButton.style.border = 'none';
+                    topButton.style.borderRadius = '3px';
+                    topButton.style.cursor = 'pointer';
+                    topButton.addEventListener('click', () => {
+                        pdfContainer.scrollTop = 0;
+                    });
+                    navButtons.appendChild(topButton);
+                    
+                    // 返回底部按钮
+                    const bottomButton = document.createElement('button');
+                    bottomButton.textContent = '查看结尾';
+                    bottomButton.style.padding = '5px 10px';
+                    bottomButton.style.backgroundColor = '#007bff';
+                    bottomButton.style.color = 'white';
+                    bottomButton.style.border = 'none';
+                    bottomButton.style.borderRadius = '3px';
+                    bottomButton.style.cursor = 'pointer';
+                    bottomButton.addEventListener('click', () => {
+                        pdfContainer.scrollTop = pdfContainer.scrollHeight;
+                    });
+                    navButtons.appendChild(bottomButton);
+                    
+                    pdfContainer.appendChild(navButtons);
+                    
+                    // 创建页面容器
+                    const pagesContainer = document.createElement('div');
+                    pagesContainer.style.display = 'flex';
+                    pagesContainer.style.flexDirection = 'column';
+                    pagesContainer.style.alignItems = 'center';
+                    pdfContainer.appendChild(pagesContainer);
+                    
+                    // 显示页数信息
+                    const pageInfo = document.createElement('div');
+                    pageInfo.style.textAlign = 'center';
+                    pageInfo.style.marginBottom = '15px';
+                    pageInfo.style.color = '#666';
+                    pageInfo.textContent = `PDF文件：共 ${pdf.numPages} 页`;
+                    pdfContainer.appendChild(pageInfo);
+                    
+                    // 页面加载进度信息
+                    const progressInfo = document.createElement('div');
+                    progressInfo.style.textAlign = 'center';
+                    progressInfo.style.marginBottom = '10px';
+                    progressInfo.style.color = '#4CAF50';
+                    progressInfo.style.fontSize = '14px';
+                    pdfContainer.appendChild(progressInfo);
+                    
+                    // 渲染所有页面
+                    let loadedPages = 0;
+                    
+                    // 创建加载页面的函数
+                    function loadPage(pageNum) {
+                        renderPage(pdf, pageNum, pagesContainer).then(() => {
+                            loadedPages++;
+                            progressInfo.textContent = `正在加载：${loadedPages}/${pdf.numPages} 页`;
+                            
+                            // 加载完成后移除进度信息
+                            if (loadedPages === pdf.numPages) {
+                                setTimeout(() => {
+                                    progressInfo.style.display = 'none';
+                                }, 1500);
+                            }
+                        });
+                    }
+                    
+                    // 顺序加载所有页面
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        loadPage(i);
+                    }
+                }).catch(function(error) {
+                    loadingText.textContent = `无法加载PDF: ${error.message}`;
+                    loadingText.style.color = 'red';
+                });
+            } else {
+                // PDF.js库未加载
+                loadingText.textContent = 'PDF查看器未加载，请下载PDF文件后查看';
+                loadingText.style.color = 'red';
+            }
+        } catch (error) {
+            // 出错时显示错误信息
+            const errorDiv = document.createElement('div');
+            errorDiv.style.color = 'red';
+            errorDiv.style.padding = '20px';
+            errorDiv.textContent = `加载PDF预览失败: ${error.message}`;
+            pdfContainer.appendChild(errorDiv);
+        }
+    }
+    
+    // 显示UI元素
+    blurOverlay.style.display = 'block';
+    viewerContainer.style.display = 'block';
+    downloadButton.style.display = 'block';
+    closeButton.style.display = 'block';
+    
+    // 动画效果
+    setTimeout(() => {
+        blurOverlay.style.opacity = '1';
+        viewerContainer.style.transform = 'translate(-50%, -50%) scale(1)';
+        downloadButton.style.opacity = '1';
+        closeButton.style.opacity = '1';
+    }, 10);
+}
+
+// 渲染PDF页面
+function renderPage(pdf, pageNumber, container) {
+    return new Promise((resolve, reject) => {
+        pdf.getPage(pageNumber).then(function(page) {
+            const scale = 1.5;
+            const viewport = page.getViewport({ scale: scale });
+            
+            // 创建页面容器
+            const pageContainer = document.createElement('div');
+            pageContainer.style.margin = '15px auto';
+            pageContainer.style.border = '1px solid #ddd';
+            pageContainer.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+            pageContainer.style.width = `${viewport.width}px`;
+            pageContainer.style.position = 'relative';
+            container.appendChild(pageContainer);
+            
+            // 创建Canvas
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            pageContainer.appendChild(canvas);
+            
+            // 页码标签
+            const pageLabel = document.createElement('div');
+            pageLabel.textContent = `第 ${pageNumber} 页`;
+            pageLabel.style.textAlign = 'center';
+            pageLabel.style.padding = '8px';
+            pageLabel.style.backgroundColor = 'rgba(0,0,0,0.05)';
+            pageLabel.style.borderTop = '1px solid #ddd';
+            pageLabel.style.fontSize = '14px';
+            pageLabel.style.color = '#444';
+            pageContainer.appendChild(pageLabel);
+            
+            // 渲染PDF内容到Canvas
+            const renderContext = {
+                canvasContext: context,
+                viewport: viewport
+            };
+            
+            const renderTask = page.render(renderContext);
+            renderTask.promise.then(() => {
+                resolve();
+            }).catch((error) => {
+                console.error(`Error rendering page ${pageNumber}: ${error}`);
+                reject(error);
+            });
+        }).catch((error) => {
+            console.error(`Error getting page ${pageNumber}: ${error}`);
+            reject(error);
+        });
+    });
+}
+
+// 关闭资源查看器
+function closeResourceViewer() {
+    if (!isViewingResource) return;
+    
+    // 动画效果
+    blurOverlay.style.opacity = '0';
+    viewerContainer.style.transform = 'translate(-50%, -50%) scale(0.8)';
+    downloadButton.style.opacity = '0';
+    closeButton.style.opacity = '0';
+    
+    // 延迟隐藏元素
+    setTimeout(() => {
+        blurOverlay.style.display = 'none';
+        viewerContainer.style.display = 'none';
+        downloadButton.style.display = 'none';
+        closeButton.style.display = 'none';
+        
+        // 重置状态
+        isViewingResource = false;
+        currentResource = null;
+        currentFilePath = null;
+        currentFileType = null;
+        
+        // 恢复相机位置并锁定控制
+        if (originalCameraPosition) {
+            camera.position.copy(originalCameraPosition);
+            // 如果之前有保存相机方向，恢复它
+            if (lastCameraRotation) {
+                camera.rotation.copy(lastCameraRotation);
+            }
+            originalCameraPosition = null;
+            controls.lock();
+        }
+    }, 500);
+}
+
+// 显示欢迎和使用说明
+function showWelcomeGuide() {
+    // 创建欢迎弹窗
+    const welcomeGuide = document.createElement('div');
+    welcomeGuide.style.position = 'fixed';
+    welcomeGuide.style.top = '50%';
+    welcomeGuide.style.left = '50%';
+    welcomeGuide.style.transform = 'translate(-50%, -50%)';
+    welcomeGuide.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+    welcomeGuide.style.color = 'white';
+    welcomeGuide.style.padding = '25px';
+    welcomeGuide.style.borderRadius = '10px';
+    welcomeGuide.style.zIndex = '1000';
+    welcomeGuide.style.maxWidth = '500px';
+    welcomeGuide.style.boxShadow = '0 5px 25px rgba(0,0,0,0.5)';
+    welcomeGuide.style.textAlign = 'left';
+    welcomeGuide.style.lineHeight = '1.6';
+    
+    // 弹窗内容
+    welcomeGuide.innerHTML = `
+        <h2 style="text-align: center; margin-bottom: 15px; color: #4CAF50;">欢迎来到3D画廊</h2>
+        
+        <h3 style="color: #fff; margin: 10px 0;">基本操作：</h3>
+        <ul style="padding-left: 20px; margin-bottom: 15px;">
+            <li><b>移动：</b> 使用 W/A/S/D 或方向键移动</li>
+            <li><b>视角控制：</b> 点击鼠标激活视角控制，移动鼠标转动视角</li>
+            <li><b>退出控制：</b> 按ESC键关闭视角控制</li>
+            <li><b>交互：</b> 点击墙上的图片或PDF查看详情</li>
+        </ul>
+        
+        <h3 style="color: #fff; margin: 10px 0;">查看资源：</h3>
+        <ul style="padding-left: 20px; margin-bottom: 20px;">
+            <li>点击<b>图片</b>可放大查看，点击下载按钮可保存</li>
+            <li>点击<b>PDF文件</b>可查看所有页面内容，支持滚动浏览</li>
+            <li>查看资源时可随时点击右上角×按钮或按ESC键返回</li>
+        </ul>
+        
+        <div style="text-align: center; margin-top: 20px;">
+            <button id="close-guide" style="padding: 8px 20px; background-color: #4CAF50; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 16px;">开始体验</button>
+        </div>
+    `;
+    
+    document.body.appendChild(welcomeGuide);
+    
+    // 添加关闭事件
+    document.getElementById('close-guide').addEventListener('click', function() {
+        // 渐变消失
+        welcomeGuide.style.transition = 'opacity 0.5s ease';
+        welcomeGuide.style.opacity = '0';
+        setTimeout(() => {
+            if (document.body.contains(welcomeGuide)) {
+                document.body.removeChild(welcomeGuide);
+            }
+        }, 500);
+    });
+    
+    // 60秒后自动关闭
+    setTimeout(() => {
+        if (document.body.contains(welcomeGuide) && welcomeGuide.style.opacity !== '0') {
+            welcomeGuide.style.transition = 'opacity 0.5s ease';
+            welcomeGuide.style.opacity = '0';
+            setTimeout(() => {
+                if (document.body.contains(welcomeGuide)) {
+                    document.body.removeChild(welcomeGuide);
+                }
+            }, 500);
+        }
+    }, 60000);
 }
 
 // 初始化应用
