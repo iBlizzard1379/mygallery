@@ -76,8 +76,8 @@
         /* 聊天按钮样式 */
         #chat-button {
             position: absolute;
-            bottom: 20px;
-            right: 20px;
+            top: 120px;
+            left: 550px;
             width: 60px;
             height: 60px;
             border-radius: 50%;
@@ -90,12 +90,12 @@
             align-items: center;
             justify-content: center;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-            transition: all 0.3s ease;
+            transition: opacity 0.3s ease;
         }
         
         #chat-button:hover {
             background-color: rgba(0, 0, 0, 0.7);
-            transform: scale(1.05);
+            opacity: 0.9;
         }
         
         /* 聊天图标 */
@@ -107,17 +107,36 @@
         /* 聊天窗口样式 */
         #chat-window {
             position: absolute;
-            bottom: 90px;
-            right: 20px;
-            width: 350px;
-            height: 500px;
-            background-color: rgba(0, 0, 0, 0.7);
+            top: 90px;
+            left: 580px;
+            transform: none;
+            width: 450px;
+            height: 240px;
+            background-color: rgba(0, 0, 0, 0.9);
             border-radius: 10px;
             z-index: 300;
             display: none;
             flex-direction: column;
             overflow: hidden;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+            resize: both;
+            min-width: 300px;
+            min-height: 200px;
+            max-width: 800px;
+            max-height: 600px;
+        }
+        
+        /* 聊天窗口调整大小的标记 */
+        #chat-window::after {
+            content: "";
+            position: absolute;
+            bottom: 3px;
+            right: 3px;
+            width: 15px;
+            height: 15px;
+            cursor: nwse-resize;
+            background: linear-gradient(135deg, transparent 50%, rgba(255, 255, 255, 0.5) 50%);
+            border-radius: 0 0 5px 0;
         }
         
         /* 聊天窗口标题栏 */
@@ -126,7 +145,7 @@
             justify-content: space-between;
             align-items: center;
             padding: 10px 15px;
-            background-color: rgba(0, 0, 0, 0.8);
+            background-color: rgba(0, 0, 0, 1);
             border-top-left-radius: 10px;
             border-top-right-radius: 10px;
             cursor: move;
@@ -158,6 +177,7 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            position: relative;
         }
         
         /* Gradio iframe */
@@ -165,7 +185,8 @@
             width: 100%;
             height: 100%;
             border: none;
-            background-color: rgba(255, 255, 255, 0.95);
+            background-color: rgba(0, 0, 0, 0.9);
+            overflow: hidden;
         }
     </style>
 </head>

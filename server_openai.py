@@ -99,24 +99,89 @@ class GalleryHandler(SimpleHTTPRequestHandler):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body {{ margin: 0; padding: 0; font-family: Arial, sans-serif; }}
-        .chatbox {{ display: flex; flex-direction: column; height: 100vh; }}
-        .messages {{ flex-grow: 1; overflow-y: auto; padding: 20px; background-color: #f5f5f5; }}
-        .input-area {{ display: flex; padding: 10px; background-color: white; border-top: 1px solid #ddd; }}
-        #user-input {{ flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }}
-        button {{ margin-left: 10px; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }}
-        .message {{ margin-bottom: 10px; padding: 10px; border-radius: 4px; max-width: 70%; }}
-        .user-message {{ background-color: #DCF8C6; align-self: flex-end; margin-left: auto; }}
-        .bot-message {{ background-color: white; align-self: flex-start; }}
-        .status {{ padding: 5px 10px; margin-bottom: 15px; border-radius: 4px; font-size: 0.9em; }}
-        .status-info {{ background-color: #e3f2fd; color: #0d47a1; }}
+        html, body {{
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        }}
+        .chatbox {{
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }}
+        .messages {{
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: rgba(0, 0, 0, 0.7);
+        }}
+        .input-area {{
+            display: flex;
+            padding: 8px;
+            background-color: rgba(0, 0, 0, 0.8);
+            border-top: 1px solid #333;
+        }}
+        #user-input {{
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            font-size: 13px;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+        }}
+        button {{
+            margin-left: 8px;
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }}
+        .message {{
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            max-width: 85%;
+            font-size: 13px;
+            word-wrap: break-word;
+        }}
+        .user-message {{
+            background-color: #2b5278;
+            align-self: flex-end;
+            margin-left: auto;
+            color: white;
+        }}
+        .bot-message {{
+            background-color: #333;
+            align-self: flex-start;
+            color: white;
+        }}
+        .status {{
+            padding: 4px 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: #4CAF50;
+        }}
+        .status-info {{
+            background-color: rgba(0, 0, 0, 0.5);
+            color: #4CAF50;
+        }}
     </style>
 </head>
 <body>
     <div class="chatbox">
         <div class="messages" id="chat-messages">
-            <div class="status status-info">画廊AI助手已准备就绪，可以回答您的问题</div>
-            <div class="message bot-message">您好！我是画廊AI助手，有什么可以帮助您的吗？</div>
+            <div class="status status-info">画廊AI助手已就绪，可以回答您的问题</div>
+            <div class="message bot-message">您好！我是画廊智能助手，请问有什么可以帮助您的？</div>
         </div>
         <div class="input-area">
             <input type="text" id="user-input" placeholder="在此输入您的问题...">

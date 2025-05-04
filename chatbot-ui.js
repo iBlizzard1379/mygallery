@@ -17,11 +17,50 @@ let dragStartX, dragStartY;
 let initialX, initialY;
 
 /**
+ * 监听窗口大小变化
+ */
+function setupResizeObserver() {
+    // 立即调整一次大小
+    adjustIframeSize();
+    
+    // 创建ResizeObserver实例
+    const resizeObserver = new ResizeObserver(entries => {
+        for (let entry of entries) {
+            // 调整iframe大小
+            adjustIframeSize();
+            
+            // 记录大小变化
+            console.log(`聊天窗口大小已调整为: ${entry.contentRect.width}x${entry.contentRect.height}px`);
+        }
+    });
+    
+    // 监听聊天窗口的大小变化
+    resizeObserver.observe(chatWindow);
+}
+
+/**
+ * 调整iframe大小以适应容器
+ */
+function adjustIframeSize() {
+    if (chatIframe && chatWindow.style.display === 'flex') {
+        const headerHeight = document.getElementById('chat-header').offsetHeight;
+        const containerHeight = chatWindow.offsetHeight;
+        
+        chatIframe.style.width = '100%';
+        chatIframe.style.height = `${containerHeight - headerHeight}px`;
+    }
+}
+
+/**
  * 初始化聊天UI
  */
 function initChatUI() {
     // 添加事件监听器
-    chatButton.addEventListener('click', toggleChatWindow);
+    chatButton.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleChatWindow(e);
+    });
     chatMinimize.addEventListener('click', minimizeChatWindow);
     chatClose.addEventListener('click', closeChatWindow);
     
@@ -33,13 +72,21 @@ function initChatUI() {
     // 键盘快捷键
     document.addEventListener('keydown', handleKeyDown);
     
+    // 设置窗口大小调整监听
+    setupResizeObserver();
+    
     console.log('聊天UI初始化完成');
 }
 
 /**
  * 打开/关闭聊天窗口
  */
-function toggleChatWindow() {
+function toggleChatWindow(event) {
+    // 防止事件冒泡
+    if (event) {
+        event.stopPropagation();
+    }
+    
     if (chatWindow.style.display === 'flex') {
         minimizeChatWindow();
     } else {
@@ -59,10 +106,29 @@ function openChatWindow() {
     // 显示窗口
     chatWindow.style.display = 'flex';
     
+    // 重置位置，确保窗口显示在正确位置
+    chatWindow.style.top = '90px';
+    chatWindow.style.left = '580px';
+    chatWindow.style.bottom = 'auto';
+    chatWindow.style.right = 'auto';
+    chatWindow.style.transform = 'none';
+    chatWindow.style.width = '450px';
+    chatWindow.style.height = '240px';
+    
+    // 调整iframe大小
+    const headerHeight = document.getElementById('chat-header').offsetHeight;
+    chatIframe.style.width = '100%';
+    chatIframe.style.height = `${240 - headerHeight}px`;
+    
     // 添加动画效果
+    chatWindow.style.opacity = '0';
+    chatWindow.style.transform = 'scaleX(0.2)';
+    chatWindow.style.transformOrigin = 'left center';
+    
+    // 延迟添加显示动画
     setTimeout(() => {
         chatWindow.style.opacity = '1';
-        chatWindow.style.transform = 'translateY(0)';
+        chatWindow.style.transform = 'scaleX(1)';
     }, 10);
     
     // 发送打开聊天窗口事件到iframe
@@ -75,7 +141,7 @@ function openChatWindow() {
 function minimizeChatWindow() {
     // 添加动画效果
     chatWindow.style.opacity = '0';
-    chatWindow.style.transform = 'translateY(20px)';
+    chatWindow.style.transform = 'translateX(-20px)';
     
     // 延迟隐藏元素
     setTimeout(() => {
@@ -110,6 +176,9 @@ function startDragging(e) {
     
     // 添加拖拽中的样式
     chatWindow.classList.add('dragging');
+    
+    // 移除transform，以便直接使用left/top进行定位
+    chatWindow.style.transform = 'none';
 }
 
 /**
@@ -231,7 +300,8 @@ const style = document.createElement('style');
 style.textContent = `
     #chat-window {
         opacity: 0;
-        transform: translateY(20px);
+        transform: scaleX(0.2);
+        transform-origin: left center;
         transition: opacity 0.3s ease, transform 0.3s ease;
     }
     
