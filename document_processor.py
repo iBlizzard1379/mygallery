@@ -19,14 +19,9 @@ from langchain_core.documents import Document
 
 # 向量数据库依赖
 try:
-    from langchain_community.vectorstores import Chroma, FAISS
+    from langchain_community.vectorstores import FAISS
 except ImportError:
     # 如果无法导入，创建替代类
-    class Chroma:
-        @classmethod
-        def from_documents(cls, *args, **kwargs):
-            raise ImportError("无法导入Chroma向量数据库")
-            
     class FAISS:
         @classmethod
         def from_documents(cls, *args, **kwargs):
@@ -80,7 +75,7 @@ class DocumentProcessor:
             self.vector_db_path = vector_db_path or './vector_db'
             self.chunk_size = 1000
             self.chunk_overlap = 200
-            self.vector_db_type = 'chroma'
+            self.vector_db_type = 'faiss'
         
         # 创建向量数据库目录（如果不存在）
         os.makedirs(self.vector_db_path, exist_ok=True)
@@ -141,55 +136,28 @@ class DocumentProcessor:
             # 确保向量数据库目录存在
             os.makedirs(self.vector_db_path, exist_ok=True)
             
-            # 根据配置选择向量数据库类型
-            if self.vector_db_type.lower() == 'chroma':
-                # 使用Chroma向量数据库
-                if os.path.exists(self.vector_db_path) and any(os.scandir(self.vector_db_path)):
-                    # 如果向量数据库已存在，加载它
-                    logger.info(f"加载已有Chroma向量数据库: {self.vector_db_path}")
-                    return Chroma(
-                        persist_directory=self.vector_db_path,
-                        embedding_function=self.embeddings
-                    )
-                else:
-                    # 创建新的向量数据库
-                    logger.info(f"创建新的Chroma向量数据库: {self.vector_db_path}")
-                    return Chroma(
-                        persist_directory=self.vector_db_path,
-                        embedding_function=self.embeddings
-                    )
-            
-            elif self.vector_db_type.lower() == 'faiss':
-                # 使用FAISS向量数据库
-                faiss_index_path = os.path.join(self.vector_db_path, "faiss_index")
-                if os.path.exists(f"{faiss_index_path}.faiss"):
-                    # 如果向量数据库已存在，加载它
-                    logger.info(f"加载已有FAISS向量数据库: {faiss_index_path}")
-                    return FAISS.load_local(
-                        folder_path=self.vector_db_path,
-                        embeddings=self.embeddings,
-                        index_name="faiss_index",
-                        allow_dangerous_deserialization=True
-                    )
-                else:
-                    # 创建新的向量数据库（初始为空）
-                    logger.info(f"创建新的FAISS向量数据库，将在添加文档后保存")
-                    from langchain_core.documents import Document
-                    empty_docs = [Document(page_content="初始化文档", metadata={"source": "初始化"})]
-                    vectorstore = FAISS.from_documents(empty_docs, self.embeddings)
-                    
-                    # 保存向量数据库
-                    vectorstore.save_local(self.vector_db_path, index_name="faiss_index")
-                    return vectorstore
-            
-            else:
-                # 默认使用Chroma
-                logger.warning(f"未知向量数据库类型: {self.vector_db_type}，使用Chroma")
-                return Chroma(
-                    persist_directory=self.vector_db_path,
-                    embedding_function=self.embeddings
+            # 使用FAISS向量数据库
+            faiss_index_path = os.path.join(self.vector_db_path, "faiss_index")
+            if os.path.exists(f"{faiss_index_path}.faiss"):
+                # 如果向量数据库已存在，加载它
+                logger.info(f"加载已有FAISS向量数据库: {faiss_index_path}")
+                return FAISS.load_local(
+                    folder_path=self.vector_db_path,
+                    embeddings=self.embeddings,
+                    index_name="faiss_index",
+                    allow_dangerous_deserialization=True
                 )
-        
+            else:
+                # 创建新的向量数据库（初始为空）
+                logger.info(f"创建新的FAISS向量数据库，将在添加文档后保存")
+                from langchain_core.documents import Document
+                empty_docs = [Document(page_content="初始化文档", metadata={"source": "初始化"})]
+                vectorstore = FAISS.from_documents(empty_docs, self.embeddings)
+                
+                # 保存向量数据库
+                vectorstore.save_local(self.vector_db_path, index_name="faiss_index")
+                return vectorstore
+            
         except Exception as e:
             logger.error(f"初始化向量数据库失败: {e}")
             # 在出现异常时，我们仍然返回None，以便能初始化对象，但后续要检查
@@ -353,24 +321,10 @@ class DocumentProcessor:
             # 向量化并添加到向量数据库
             logger.info(f"向量化并添加到数据库: {file_path} ({len(documents)} 个块)")
             
-            if self.vector_db_type.lower() == 'faiss':
-                # FAISS需要不同的处理方式
-                if not hasattr(self.vectorstore, 'docstore') or not self.vectorstore.docstore._dict:
-                    # 如果FAISS是空的，直接从文档创建
-                    self.vectorstore = FAISS.from_documents(documents, self.embeddings)
-                    # 保存FAISS索引
-                    self.vectorstore.save_local(self.vector_db_path, index_name="faiss_index")
-                else:
-                    # 如果FAISS已有数据，添加新文档
-                    self.vectorstore.add_documents(documents)
-                    # 保存更新后的索引
-                    self.vectorstore.save_local(self.vector_db_path, index_name="faiss_index")
-            else:
-                # Chroma直接添加文档
-                ids = self.vectorstore.add_documents(documents)
-                # 持久化Chroma数据库
-                if hasattr(self.vectorstore, 'persist'):
-                    self.vectorstore.persist()
+            # 如果FAISS已有数据，添加新文档
+            self.vectorstore.add_documents(documents)
+            # 保存更新后的索引
+            self.vectorstore.save_local(self.vector_db_path, index_name="faiss_index")
             
             # 更新文档元数据
             self.document_metadata[file_path] = {

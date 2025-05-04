@@ -10,6 +10,11 @@ from typing import List, Dict, Any, Optional, Union, Tuple
 # LangChain导入
 from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts import PromptTemplate
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.agents.agent_toolkits import create_retriever_tool
+from langchain.tools import tool
+# 修正导入路径
+from langchain_community.tools.tavily_search.tool import TavilySearchResults
 # 修改导入方式，避免vectorstores.base导入错误
 try:
     from langchain_community.vectorstores.base import VectorStore
@@ -25,21 +30,26 @@ except ImportError:
             ...
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
+from langchain_core.tools import Tool
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # 导入自定义模块
 try:
     from document_processor import get_document_processor
     from langchain_helper import create_chat_handler
     from env_manager import get_env_manager
+    from search_tools import get_search_tool
     
     has_dependencies = True
     document_processor = get_document_processor()
     env_manager = get_env_manager()
+    search_tool = get_search_tool()
 except ImportError as e:
     print(f"警告: 无法导入必要的模块: {e}")
     has_dependencies = False
     document_processor = None
     env_manager = None
+    search_tool = None
 
 # 日志配置
 logging.basicConfig(level=logging.INFO)
@@ -59,7 +69,7 @@ DEFAULT_CONDENSE_QUESTION_TEMPLATE = """
 
 DEFAULT_QA_TEMPLATE = """
 你是画廊中的智能助手，能够回答关于PDF文档的问题。请基于以下上下文回答问题。
-如果上下文中没有足够的信息回答问题，请明确说明你不知道，不要编造答案。
+如果上下文中没有足够的信息回答问题，请使用搜索工具来获取最新信息。
 
 上下文:
 {context}
@@ -68,6 +78,28 @@ DEFAULT_QA_TEMPLATE = """
 
 回答:
 """
+
+# 新的系统提示模板
+SYSTEM_PROMPT = """你是画廊中的智能助手，能够回答关于PDF文档和互联网信息的问题。
+你有两个主要信息来源：
+1. 本地文档数据库 - 包含已上传的PDF文档
+2. 互联网搜索 - 可以获取最新的网络信息
+
+当用户询问的内容可能需要最新信息，如当前新闻、最近事件、最新产品或实时数据时，你应该使用搜索工具。
+当用户询问的内容可能在本地文档中找到，如文档内容解释、概念定义或文档中提到的信息时，你应该使用文档检索工具。
+
+回答时，请明确说明你的信息来源。如果使用了搜索工具，请引用相关来源。
+总是先仔细思考用户问题的性质，再决定使用哪个工具。如果不确定，优先使用本地文档检索工具。
+"""
+
+# 工具调用代理模板 - 修复缺少的agent_scratchpad变量
+AGENT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", SYSTEM_PROMPT),
+        ("user", "{input}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
+    ]
+)
 
 class RAGChain:
     """
@@ -112,12 +144,95 @@ class RAGChain:
             DEFAULT_QA_TEMPLATE
         )
         
-        # 初始化RAG链
+        # 初始化向量数据库
+        if not self.vectorstore and document_processor:
+            self.vectorstore = document_processor.get_vectorstore()
+        
+        # 初始化工具和代理
+        self.tools = self._init_tools()
+        self.agent_executor = self._init_agent()
+        
+        # 备用RAG链 (如果工具调用不可用)
         self.chain = self._init_chain()
+    
+    def _init_tools(self) -> List[Tool]:
+        """初始化工具集合"""
+        tools = []
+        
+        # 添加文档检索工具
+        if self.vectorstore:
+            retriever = self.vectorstore.as_retriever(
+                search_type="similarity",
+                search_kwargs={"k": 5}
+            )
+            
+            retriever_tool = create_retriever_tool(
+                retriever=retriever,
+                name="document_search",
+                description="搜索本地PDF文档库。当问题涉及文档内容、历史信息、概念解释等不需要最新信息的内容时使用此工具。"
+            )
+            tools.append(retriever_tool)
+        
+        # 添加网络搜索工具
+        try:
+            # 获取API密钥
+            tavily_api_key = os.getenv("TAVILY_API_KEY", "")
+            if env_manager:
+                tavily_api_key = env_manager.tavily_api_key or tavily_api_key
+            
+            if tavily_api_key:
+                search_tool = TavilySearchResults(api_key=tavily_api_key)
+                tools.append(
+                    Tool(
+                        name="internet_search",
+                        func=search_tool.invoke,
+                        description="搜索互联网获取最新信息。当问题涉及当前事件、新闻、最新数据、市场趋势等需要最新信息的内容时使用此工具。",
+                        return_direct=False
+                    )
+                )
+                logger.info("成功创建Tavily搜索工具")
+            else:
+                logger.warning("未配置Tavily API Key，无法创建互联网搜索工具")
+        except Exception as e:
+            logger.error(f"创建Tavily搜索工具失败: {e}")
+        
+        return tools
+    
+    def _init_agent(self) -> Optional[AgentExecutor]:
+        """初始化代理执行器"""
+        if not self.llm:
+            logger.error("LLM未初始化，无法创建代理")
+            return None
+        
+        if not self.tools:
+            logger.error("没有可用工具，无法创建代理")
+            return None
+        
+        try:
+            # 创建代理
+            agent = create_tool_calling_agent(
+                llm=self.llm,
+                tools=self.tools,
+                prompt=AGENT_PROMPT
+            )
+            
+            # 创建代理执行器
+            agent_executor = AgentExecutor(
+                agent=agent, 
+                tools=self.tools,
+                verbose=True,
+                handle_parsing_errors=True
+            )
+            
+            logger.info("成功创建工具调用代理")
+            return agent_executor
+        except Exception as e:
+            logger.error(f"创建代理执行器失败: {e}")
+            return None
     
     def _init_chain(self) -> Optional[ConversationalRetrievalChain]:
         """
-        初始化RAG链
+        初始化传统RAG链 (作为备用)
         
         Returns:
             RAG链实例
@@ -127,13 +242,8 @@ class RAGChain:
             return None
         
         if not self.vectorstore:
-            # 尝试从文档处理器获取向量数据库
-            if document_processor:
-                self.vectorstore = document_processor.get_vectorstore()
-            
-            if not self.vectorstore:
-                logger.error("向量数据库未初始化，无法创建RAG链")
-                return None
+            logger.error("向量数据库未初始化，无法创建RAG链")
+            return None
         
         try:
             # 创建检索器
@@ -151,19 +261,83 @@ class RAGChain:
                 return_source_documents=True
             )
             
-            logger.info("RAG链初始化成功")
+            logger.info("备用RAG链初始化成功")
             return chain
         
         except Exception as e:
-            logger.error(f"初始化RAG链失败: {e}")
+            logger.error(f"初始化备用RAG链失败: {e}")
             return None
     
     def query(self, query: str) -> Dict[str, Any]:
         """
-        执行查询
+        执行查询，自动判断是使用工具还是传统RAG
         
         Args:
             query: 查询文本
+        
+        Returns:
+            包含回答和相关文档的字典
+        """
+        logger.info(f"收到查询: {query}")
+        
+        # 使用代理执行器处理查询
+        if self.agent_executor:
+            try:
+                logger.info("使用工具调用代理处理查询")
+                # 构建带有历史的输入
+                # 转换历史消息为字符串，简化处理
+                history_str = ""
+                if self.chat_history:
+                    for i in range(0, len(self.chat_history) - 1, 2):
+                        if i + 1 < len(self.chat_history):
+                            human_msg = self.chat_history[i]
+                            ai_msg = self.chat_history[i + 1]
+                            
+                            if isinstance(human_msg, HumanMessage) and isinstance(ai_msg, AIMessage):
+                                history_str += f"用户: {human_msg.content}\n助手: {ai_msg.content}\n\n"
+                
+                input_with_history = f"聊天历史:\n{history_str}\n用户问题: {query}"
+                
+                # 执行代理
+                result = self.agent_executor.invoke({"input": input_with_history})
+                response = result.get("output", "")
+                
+                # 更新聊天历史
+                self.chat_history.append(HumanMessage(content=query))
+                self.chat_history.append(AIMessage(content=response))
+                
+                # 构建结果对象 (与传统RAG结果格式保持一致)
+                source_docs = []
+                if "document_search" in str(result):
+                    tool_outputs = result.get("intermediate_steps", [])
+                    for step in tool_outputs:
+                        action, output = step
+                        if action.tool == "document_search" and isinstance(output, list):
+                            source_docs.extend(output)
+                
+                return {
+                    "answer": response,
+                    "source_documents": source_docs,
+                    "success": True,
+                    "search_type": "agent"
+                }
+                
+            except Exception as e:
+                logger.error(f"代理执行器处理查询失败: {e}")
+                # 回退到传统RAG链
+                logger.info("回退到传统RAG链处理查询")
+                return self._rag_query(query)
+        
+        # 如果代理执行器不可用，使用传统RAG链
+        logger.info("使用传统RAG链处理查询（代理执行器不可用）")
+        return self._rag_query(query)
+    
+    def _rag_query(self, query: str) -> Dict[str, Any]:
+        """
+        使用传统RAG链执行查询 (备用方法)
+        
+        Args:
+            query: 用户查询
         
         Returns:
             包含回答和相关文档的字典
@@ -192,45 +366,46 @@ class RAGChain:
             return {
                 "answer": result["answer"],
                 "source_documents": result.get("source_documents", []),
-                "success": True
+                "success": True,
+                "search_type": "rag"
             }
             
         except Exception as e:
-            error_msg = f"执行查询时出错: {e}"
+            error_msg = f"执行RAG查询时出错: {e}"
             logger.error(error_msg)
             return {
-                "answer": f"抱歉，处理您的请求时出现问题: {str(e)}",
+                "answer": f"抱歉，处理您的问题时出错: {str(e)}",
                 "source_documents": [],
                 "success": False
             }
     
     def _format_chat_history(self) -> List[Tuple[str, str]]:
         """
-        格式化聊天历史，用于RAG链
+        格式化聊天历史
         
         Returns:
-            聊天历史列表，格式为 [(human_message, ai_message), ...]
+            元组列表，每个元组包含一个用户消息和对应的AI回复
         """
         formatted_history = []
         
-        # 成对获取历史消息（人类+AI）
+        # 必须成对出现，一个人类消息对应一个AI消息
         for i in range(0, len(self.chat_history) - 1, 2):
             if i + 1 < len(self.chat_history):
-                if isinstance(self.chat_history[i], HumanMessage) and \
-                   isinstance(self.chat_history[i+1], AIMessage):
-                    human_msg = self.chat_history[i].content
-                    ai_msg = self.chat_history[i+1].content
-                    formatted_history.append((human_msg, ai_msg))
+                human_msg = self.chat_history[i]
+                ai_msg = self.chat_history[i + 1]
+                
+                if isinstance(human_msg, HumanMessage) and isinstance(ai_msg, AIMessage):
+                    formatted_history.append((human_msg.content, ai_msg.content))
         
         return formatted_history
     
     def add_message(self, message: Union[str, BaseMessage], role: str = "human") -> None:
         """
-        添加消息到历史
+        添加消息到聊天历史
         
         Args:
-            message: 消息内容或消息对象
-            role: 角色 ("human", "ai", "system")
+            message: 消息内容
+            role: 消息角色 ('human' 或 'ai')
         """
         if isinstance(message, BaseMessage):
             self.chat_history.append(message)
@@ -239,20 +414,17 @@ class RAGChain:
                 self.chat_history.append(HumanMessage(content=message))
             elif role.lower() == "ai":
                 self.chat_history.append(AIMessage(content=message))
-            elif role.lower() == "system":
-                self.chat_history.append(SystemMessage(content=message))
+            else:
+                logger.warning(f"未知角色: {role}，使用'human'")
+                self.chat_history.append(HumanMessage(content=message))
     
     def clear_history(self) -> None:
         """清空聊天历史"""
         self.chat_history = []
+        logger.info("已清空聊天历史")
     
     def get_chat_history(self) -> List[BaseMessage]:
-        """
-        获取聊天历史
-        
-        Returns:
-            聊天历史消息列表
-        """
+        """获取聊天历史"""
         return self.chat_history
     
     def get_formatted_history(self) -> List[Dict[str, str]]:
@@ -260,40 +432,47 @@ class RAGChain:
         获取格式化的聊天历史
         
         Returns:
-            聊天历史列表，格式为 [{"role": "human", "content": "..."}, {"role": "ai", "content": "..."}]
+            字典列表，每个字典包含角色和内容
         """
-        formatted_history = []
+        formatted = []
         
         for message in self.chat_history:
             if isinstance(message, HumanMessage):
-                formatted_history.append({"role": "human", "content": message.content})
+                formatted.append({
+                    "role": "user",
+                    "content": message.content
+                })
             elif isinstance(message, AIMessage):
-                formatted_history.append({"role": "ai", "content": message.content})
+                formatted.append({
+                    "role": "assistant",
+                    "content": message.content
+                })
             elif isinstance(message, SystemMessage):
-                formatted_history.append({"role": "system", "content": message.content})
+                formatted.append({
+                    "role": "system",
+                    "content": message.content
+                })
+            else:
+                formatted.append({
+                    "role": "unknown",
+                    "content": str(message)
+                })
         
-        return formatted_history
+        return formatted
 
 # 单例模式
 _rag_chain_instance = None
 
 def get_rag_chain() -> RAGChain:
     """
-    获取RAG链单例实例
+    获取RAG链实例
     
     Returns:
-        RAGChain实例
+        RAG链实例
     """
     global _rag_chain_instance
     if _rag_chain_instance is None:
-        # 尝试获取向量数据库
-        vectorstore = None
-        if document_processor:
-            vectorstore = document_processor.get_vectorstore()
-        
-        # 创建RAG链实例
-        _rag_chain_instance = RAGChain(vectorstore=vectorstore)
-    
+        _rag_chain_instance = RAGChain()
     return _rag_chain_instance
 
 # 测试代码

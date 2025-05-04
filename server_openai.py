@@ -314,11 +314,42 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 # 检查处理器可用性
                 direct_chat_available = direct_chat_handler is not None
                 chatbot_available = chatbot and hasattr(chatbot, 'chat_handler') and chatbot.chat_handler is not None
+                rag_chain_available = False
                 
-                logger.info(f"direct_chat可用: {direct_chat_available}, chatbot可用: {chatbot_available}")
+                # 检查是否有rag_chain可用
+                try:
+                    from rag_chain import get_rag_chain
+                    rag_chain = get_rag_chain()
+                    rag_chain_available = rag_chain is not None
+                    logger.info(f"RAG链可用: {rag_chain_available}")
+                except Exception as e:
+                    logger.error(f"无法导入或初始化RAG链: {e}")
+                    rag_chain_available = False
                 
-                # 优先使用直接OpenAI处理器
-                if direct_chat_available:
+                logger.info(f"direct_chat可用: {direct_chat_available}, chatbot可用: {chatbot_available}, RAG链可用: {rag_chain_available}")
+                
+                # 优先使用RAG链（自动决定是否使用搜索工具）
+                if rag_chain_available:
+                    try:
+                        logger.info("使用RAG链处理查询")
+                        result = rag_chain.query(message)
+                        response = result.get("answer", "")
+                        logger.info(f"RAG链回复: {response[:50]}...")
+                    except Exception as e:
+                        logger.error(f"RAG链处理错误: {e}")
+                        # 回退到直接处理器
+                        if direct_chat_available:
+                            logger.info("RAG链失败，尝试使用direct_chat_handler处理器")
+                            try:
+                                response = direct_chat_handler.chat(message)
+                                logger.info(f"回复: {response[:50]}...")
+                            except Exception as e2:
+                                logger.error(f"direct_chat_handler错误: {e2}")
+                                response = f"抱歉，无法处理您的请求: {str(e2)}"
+                        else:
+                            response = f"抱歉，无法处理您的请求: {str(e)}"
+                # 使用直接OpenAI处理器
+                elif direct_chat_available:
                     try:
                         logger.info("使用direct_chat_handler处理器")
                         response = direct_chat_handler.chat(message)
