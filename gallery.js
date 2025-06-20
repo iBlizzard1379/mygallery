@@ -572,6 +572,19 @@ function showResourceViewer(resourceName, resourceType, filePath) {
     currentFilePath = filePath;
     currentFileType = resourceType;
     
+    // 重新验证资源类型（避免缓存问题）
+    const fileExt = resourceName.toLowerCase().split('.').pop();
+    let correctedResourceType = resourceType;
+    if (fileExt === 'pdf') {
+        correctedResourceType = 'pdf';
+    } else if (['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'].includes(fileExt)) {
+        correctedResourceType = 'document';
+    }
+    
+    if (correctedResourceType !== resourceType) {
+        resourceType = correctedResourceType;
+    }
+    
     // 解锁指针锁定前保存当前相机方向
     if (controls.isLocked) {
         lastCameraRotation = camera.rotation.clone();
@@ -795,6 +808,192 @@ function showResourceViewer(resourceName, resourceType, filePath) {
             errorDiv.textContent = `加载PDF预览失败: ${error.message}`;
             pdfContainer.appendChild(errorDiv);
         }
+    } else if (resourceType === 'document') {
+        // 创建文档预览容器
+        const docContainer = document.createElement('div');
+        docContainer.style.backgroundColor = 'white';
+        docContainer.style.padding = '30px';
+        docContainer.style.borderRadius = '10px';
+        docContainer.style.width = '800px';
+        docContainer.style.maxWidth = '90vw';
+        docContainer.style.height = '80vh';
+        docContainer.style.maxHeight = '85vh';
+        docContainer.style.overflow = 'auto';
+        docContainer.style.position = 'relative';
+        docContainer.style.textAlign = 'center';
+        viewerContainer.appendChild(docContainer);
+        
+        // 获取文件扩展名
+        const fileExt = resourceName.toLowerCase().split('.').pop();
+        let docIcon = '';
+        let docTypeDesc = '';
+        let docColor = '#4285f4';
+        
+        switch (fileExt) {
+            case 'docx':
+            case 'doc':
+                docIcon = '📄';
+                docTypeDesc = 'Word 文档';
+                docColor = '#2b579a';
+                break;
+            case 'xlsx':
+            case 'xls':
+                docIcon = '📊';
+                docTypeDesc = 'Excel 电子表格';
+                docColor = '#217346';
+                break;
+            case 'pptx':
+            case 'ppt':
+                docIcon = '📈';
+                docTypeDesc = 'PowerPoint 演示文稿';
+                docColor = '#d24726';
+                break;
+            default:
+                docIcon = '📝';
+                docTypeDesc = '文档';
+        }
+        
+        // 添加文档图标和信息
+        const docIcon_div = document.createElement('div');
+        docIcon_div.style.fontSize = '80px';
+        docIcon_div.style.marginBottom = '20px';
+        docIcon_div.textContent = docIcon;
+        docContainer.appendChild(docIcon_div);
+        
+        // 添加文档标题
+        const docTitle = document.createElement('div');
+        docTitle.textContent = resourceName;
+        docTitle.style.fontSize = '24px';
+        docTitle.style.fontWeight = 'bold';
+        docTitle.style.marginBottom = '10px';
+        docTitle.style.color = docColor;
+        docContainer.appendChild(docTitle);
+        
+        // 添加文档类型描述
+        const docDesc = document.createElement('div');
+        docDesc.textContent = docTypeDesc;
+        docDesc.style.fontSize = '16px';
+        docDesc.style.color = '#666';
+        docDesc.style.marginBottom = '30px';
+        docContainer.appendChild(docDesc);
+        
+        // 添加文档内容预览
+        const contentPreview = document.createElement('div');
+        contentPreview.style.backgroundColor = '#f8f9fa';
+        contentPreview.style.padding = '20px';
+        contentPreview.style.borderRadius = '8px';
+        contentPreview.style.marginBottom = '20px';
+        contentPreview.style.textAlign = 'left';
+        contentPreview.style.maxHeight = '400px';
+        contentPreview.style.overflow = 'auto';
+        contentPreview.innerHTML = `
+            <h3 style="margin: 0 0 15px 0; color: ${docColor};">📄 文档内容预览</h3>
+            <div id="content-loading" style="text-align: center; color: #666; padding: 20px;">
+                正在加载文档内容...
+            </div>
+        `;
+        docContainer.appendChild(contentPreview);
+        
+        // 异步加载文档内容
+        loadDocumentContent(resourceName, contentPreview, docColor);
+        
+        // 添加功能说明
+        const docFeatures = document.createElement('div');
+        docFeatures.style.backgroundColor = '#e8f5e8';
+        docFeatures.style.padding = '15px';
+        docFeatures.style.borderRadius = '8px';
+        docFeatures.style.marginBottom = '20px';
+        docFeatures.style.textAlign = 'left';
+        docFeatures.innerHTML = `
+            <h3 style="margin: 0 0 10px 0; color: ${docColor};">✨ 智能处理功能</h3>
+            <p style="margin: 0; line-height: 1.6; font-size: 14px;">
+                📝 <strong>自动提取：</strong>已提取所有文本内容 | 
+                🧠 <strong>智能问答：</strong>支持内容查询 | 
+                💾 <strong>知识库：</strong>已向量化存储
+            </p>
+        `;
+        docContainer.appendChild(docFeatures);
+        
+        // 添加使用指引
+        const docTips = document.createElement('div');
+        docTips.style.backgroundColor = '#e3f2fd';
+        docTips.style.padding = '15px';
+        docTips.style.borderRadius = '8px';
+        docTips.style.textAlign = 'left';
+        docTips.innerHTML = `
+            <h3 style="margin: 0 0 10px 0; color: #1976d2;">💡 使用建议</h3>
+            <p style="margin: 0; line-height: 1.6; font-size: 14px;">
+                💬 <strong>智能问答：</strong>在聊天窗口询问文档内容 | 
+                📥 <strong>文件下载：</strong>点击下载按钮获取原文件 | 
+                ⌨️ <strong>返回画廊：</strong>按ESC键或点击×按钮
+            </p>
+        `;
+        docContainer.appendChild(docTips);
+        
+        // 添加示例问题
+        const exampleQuestions = document.createElement('div');
+        exampleQuestions.style.backgroundColor = '#f3e5f5';
+        exampleQuestions.style.padding = '20px';
+        exampleQuestions.style.borderRadius = '8px';
+        exampleQuestions.style.textAlign = 'left';
+        
+        let questions = [];
+        switch (fileExt) {
+            case 'docx':
+            case 'doc':
+                questions = [
+                    `"${resourceName}的主要内容是什么？"`,
+                    `"这个文档讲了哪些要点？"`,
+                    `"文档中有哪些重要信息？"`
+                ];
+                break;
+            case 'xlsx':
+            case 'xls':
+                questions = [
+                    `"${resourceName}包含哪些数据？"`,
+                    `"表格中有什么统计信息？"`,
+                    `"这个电子表格的内容摘要？"`
+                ];
+                break;
+            case 'pptx':
+            case 'ppt':
+                questions = [
+                    `"${resourceName}讲了什么主题？"`,
+                    `"演示文稿的核心观点是什么？"`,
+                    `"PPT中有哪些重要内容？"`
+                ];
+                break;
+        }
+        
+        exampleQuestions.innerHTML = `
+            <h3 style="margin: 0 0 15px 0; color: #7b1fa2;">🤔 试试这些问题</h3>
+            <p style="margin: 0 0 10px 0; color: #666;">复制下面的问题到聊天窗口：</p>
+            ${questions.map(q => `<div style="background: white; padding: 8px 12px; margin: 5px 0; border-radius: 4px; border-left: 3px solid #7b1fa2; font-family: monospace; cursor: pointer;" onclick="navigator.clipboard.writeText(${q}); this.style.background='#e8f5e8'; setTimeout(() => this.style.background='white', 1000);">${q}</div>`).join('')}
+        `;
+        docContainer.appendChild(exampleQuestions);
+    } else {
+        console.log('未知资源类型，使用默认处理:', resourceType);
+        // 创建默认容器
+        const defaultContainer = document.createElement('div');
+        defaultContainer.style.backgroundColor = 'white';
+        defaultContainer.style.padding = '30px';
+        defaultContainer.style.borderRadius = '10px';
+        defaultContainer.style.width = '800px';
+        defaultContainer.style.maxWidth = '90vw';
+        defaultContainer.style.height = '80vh';
+        defaultContainer.style.maxHeight = '85vh';
+        defaultContainer.style.overflow = 'auto';
+        defaultContainer.style.position = 'relative';
+        defaultContainer.style.textAlign = 'center';
+        viewerContainer.appendChild(defaultContainer);
+        
+        defaultContainer.innerHTML = `
+            <h2>未知文件类型</h2>
+            <p>文件名: ${resourceName}</p>
+            <p>资源类型: ${resourceType}</p>
+            <p>文件路径: ${filePath}</p>
+            <p>请联系管理员或尝试下载文件查看内容。</p>
+        `;
     }
     
     // 显示UI元素
@@ -810,6 +1009,85 @@ function showResourceViewer(resourceName, resourceType, filePath) {
         downloadButton.style.opacity = '1';
         closeButton.style.opacity = '1';
     }, 10);
+}
+
+// 加载文档内容
+async function loadDocumentContent(resourceName, contentContainer, docColor) {
+    try {
+        
+        // 调用后端API获取文档内容
+        const response = await fetch('/api/document-content', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                filename: resourceName
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success && data.content) {
+            // 清空加载提示
+            contentContainer.innerHTML = `
+                <h3 style="margin: 0 0 15px 0; color: ${docColor};">📄 文档内容预览</h3>
+            `;
+            
+            // 创建内容显示区域
+            const contentDiv = document.createElement('div');
+            contentDiv.style.backgroundColor = 'white';
+            contentDiv.style.padding = '15px';
+            contentDiv.style.borderRadius = '5px';
+            contentDiv.style.border = '1px solid #ddd';
+            contentDiv.style.fontFamily = 'Arial, sans-serif';
+            contentDiv.style.fontSize = '14px';
+            contentDiv.style.lineHeight = '1.6';
+            contentDiv.style.whiteSpace = 'pre-wrap';
+            contentDiv.style.wordBreak = 'break-word';
+            contentDiv.style.maxHeight = '350px';
+            contentDiv.style.overflow = 'auto';
+            
+            // 处理文本内容，限制长度
+            let displayContent = data.content;
+            const maxLength = 2000;
+            if (displayContent.length > maxLength) {
+                displayContent = displayContent.substring(0, maxLength) + '\n\n... (内容过长，已截断。完整内容请使用下方聊天功能查询)';
+            }
+            
+            contentDiv.textContent = displayContent;
+            contentContainer.appendChild(contentDiv);
+            
+            // 添加统计信息
+            const statsDiv = document.createElement('div');
+            statsDiv.style.marginTop = '10px';
+            statsDiv.style.fontSize = '12px';
+            statsDiv.style.color = '#666';
+            statsDiv.innerHTML = `
+                📊 内容统计: ${data.content.length} 字符 | 
+                📅 处理时间: ${data.metadata?.processed_time || '未知'} | 
+                🔧 处理器: ${data.metadata?.processor || '未知'}
+            `;
+            contentContainer.appendChild(statsDiv);
+            
+        } else {
+            throw new Error(data.error || '无法获取文档内容');
+        }
+        
+            } catch (error) {
+        contentContainer.innerHTML = `
+            <h3 style="margin: 0 0 15px 0; color: ${docColor};">📄 文档内容预览</h3>
+            <div style="text-align: center; color: #e74c3c; padding: 20px; background: #fdf2f2; border-radius: 5px;">
+                <p><strong>⚠️ 内容加载失败</strong></p>
+                <p style="font-size: 14px; margin: 10px 0;">错误: ${error.message}</p>
+                <p style="font-size: 12px; color: #666;">请尝试使用下方聊天功能查询文档内容</p>
+            </div>
+        `;
+    }
 }
 
 // 渲染PDF页面
@@ -1045,10 +1323,27 @@ async function addFramesToWall(side, fileList, isImage = true) {
             try {
                 // 创建图片或文档
                 let texture;
+                let resourceType;
+                
                 if (isImage) {
                     texture = await createImageTexture(fileName);
+                    resourceType = 'image';
                 } else {
-                    texture = createPDFTexture(fileName);
+                    // 对于文档，使用新的通用文档纹理创建函数
+                    texture = createDocumentTexture(fileName);
+                    
+                    // 根据文件扩展名确定资源类型
+                    const fileExt = fileName.toLowerCase().split('.').pop();
+                    if (fileExt === 'pdf') {
+                        resourceType = 'pdf';
+                    } else if (['docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt'].includes(fileExt)) {
+                        resourceType = 'document';
+                    } else {
+                        resourceType = 'pdf'; // 默认作为PDF处理
+                    }
+                    
+                    // 调试信息
+                    console.log(`文件 ${fileName} 的资源类型设置为: ${resourceType} (扩展名: ${fileExt})`)
                 }
                 
                 const pictureMaterial = new THREE.MeshBasicMaterial({
@@ -1070,7 +1365,7 @@ async function addFramesToWall(side, fileList, isImage = true) {
                 picture.userData = {
                     isClickable: true,
                     resourceName: fileName,
-                    resourceType: isImage ? 'image' : 'pdf',
+                    resourceType: resourceType,
                     filePath: `images/${fileName}` // 所有文件都在images目录
                 };
                 
@@ -1221,32 +1516,85 @@ function createImageTexture(imageName) {
     });
 }
 
-// 创建PDF预览纹理
-function createPDFTexture(pdfName) {
+// 创建文档预览纹理（支持多种格式）
+function createDocumentTexture(docName) {
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 256;
     const ctx = canvas.getContext('2d');
     
+    // 获取文件扩展名
+    const fileExt = docName.toLowerCase().split('.').pop();
+    let docIcon = '';
+    let docType = '';
+    let bgColor = '#ffffff';
+    let iconColor = '#4285f4';
+    
+    // 根据文件类型设置图标和颜色
+    switch (fileExt) {
+        case 'pdf':
+            docIcon = 'PDF';
+            docType = 'PDF';
+            bgColor = '#ffffff';
+            iconColor = '#ff0000';
+            break;
+        case 'docx':
+        case 'doc':
+            docIcon = 'DOC';
+            docType = 'Word';
+            bgColor = '#e8f4fd';
+            iconColor = '#2b579a';
+            break;
+        case 'xlsx':
+        case 'xls':
+            docIcon = 'XLS';
+            docType = 'Excel';
+            bgColor = '#e8f5e8';
+            iconColor = '#217346';
+            break;
+        case 'pptx':
+        case 'ppt':
+            docIcon = 'PPT';
+            docType = 'PowerPoint';
+            bgColor = '#fff2e8';
+            iconColor = '#d24726';
+            break;
+        default:
+            docIcon = 'DOC';
+            docType = '文档';
+            bgColor = '#f5f5f5';
+            iconColor = '#666666';
+    }
+    
     // 背景
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // PDF图标
-    ctx.fillStyle = '#ff0000';
-    ctx.font = 'bold 40px Arial';
+    // 添加边框
+    ctx.strokeStyle = iconColor;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+    
+    // 文档图标
+    ctx.fillStyle = iconColor;
+    ctx.font = 'bold 32px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('PDF', canvas.width / 2, canvas.height / 2 - 50);
+    ctx.fillText(docIcon, canvas.width / 2, canvas.height / 2 - 40);
+    
+    // 文档类型
+    ctx.fillStyle = iconColor;
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText(docType, canvas.width / 2, canvas.height / 2 - 10);
     
     // 文档标题
     ctx.fillStyle = '#000000';
-    ctx.font = '20px Arial';
-    const title = pdfName.replace('.pdf', '');
+    ctx.font = '14px Arial';
+    const title = docName.replace(/\.[^/.]+$/, ''); // 移除扩展名
     
     // 自动换行
     const words = title.split(' ');
     let line = '';
-    let y = canvas.height / 2;
+    let y = canvas.height / 2 + 20;
     
     for (let n = 0; n < words.length; n++) {
         const testLine = line + words[n] + ' ';
@@ -1256,15 +1604,23 @@ function createPDFTexture(pdfName) {
         if (testWidth > canvas.width - 40 && n > 0) {
             ctx.fillText(line, canvas.width / 2, y);
             line = words[n] + ' ';
-            y += 25;
+            y += 18;
+            if (y > canvas.height - 30) break; // 防止超出画布
         } else {
             line = testLine;
         }
     }
-    ctx.fillText(line, canvas.width / 2, y);
+    if (y <= canvas.height - 30) {
+        ctx.fillText(line, canvas.width / 2, y);
+    }
     
     const texture = new THREE.CanvasTexture(canvas);
     return texture;
+}
+
+// 为了保持向后兼容，保留原有的PDF函数
+function createPDFTexture(pdfName) {
+    return createDocumentTexture(pdfName);
 }
 
 // 初始化应用

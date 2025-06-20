@@ -1,6 +1,6 @@
-# 3D 画廊长廊 (3D Gallery Corridor)
+# AI 知识画廊 (AI Knowledge Gallery)
 
-这是一个使用 Three.js 创建的 3D 虚拟画廊，可以展示 images/ 文件夹中的图片和文档。
+这是一个使用 Three.js 创建的 3D 虚拟画廊，智能展示和处理多种格式的文档和图片，支持 AI 问答功能。
 
 ## 特点
 

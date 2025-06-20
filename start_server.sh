@@ -34,6 +34,7 @@ fi
 # 启动服务器
 echo "启动服务器..."
 export PYTHONPATH="$PYTHONPATH:$(pwd)"
+export KMP_DUPLICATE_LIB_OK=TRUE
 python server.py
 
 echo "服务器已停止" 

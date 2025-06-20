@@ -55,8 +55,8 @@ class DocumentEventHandler(FileSystemEventHandler):
         # 获取文件路径
         file_path = event.src_path
         
-        # 仅处理PDF文件
-        if not file_path.lower().endswith(".pdf"):
+        # 检查是否为支持的文件格式
+        if not self._is_supported_file(file_path):
             return
         
         # 检查是否需要处理该事件
@@ -69,14 +69,26 @@ class DocumentEventHandler(FileSystemEventHandler):
             except Exception as e:
                 logger.error(f"处理文件事件时出错: {file_path} - {e}")
     
+    def _is_supported_file(self, file_path: str) -> bool:
+        """检查是否为支持的文件格式"""
+        # 支持的文件扩展名
+        supported_extensions = {
+            '.pdf', '.docx', '.doc', '.pptx', '.ppt', 
+            '.xlsx', '.xls', '.jpg', '.jpeg', '.png', 
+            '.gif', '.bmp', '.tiff', '.webp'
+        }
+        
+        file_ext = os.path.splitext(file_path)[1].lower()
+        return file_ext in supported_extensions
+    
     def _should_process(self, event) -> bool:
         """判断事件是否需要处理"""
         # 获取文件路径
         file_path = event.src_path
         
-        # 如果是创建或修改事件，且是PDF文件
+        # 如果是创建或修改事件，且是支持的文件格式
         if (isinstance(event, FileCreatedEvent) or isinstance(event, FileModifiedEvent)) \
-           and file_path.lower().endswith(".pdf"):
+           and self._is_supported_file(file_path):
             
             # 检查文件是否存在（有些编辑器可能会触发虚假事件）
             if not os.path.exists(file_path):
@@ -96,7 +108,9 @@ class DocumentEventHandler(FileSystemEventHandler):
                 logger.debug(f"跳过重复处理: {file_path}")
                 return False
             
-            logger.info(f"检测到文件变更: {file_path}")
+            # 获取文件扩展名用于日志
+            file_ext = os.path.splitext(file_path)[1].lower()
+            logger.info(f"检测到 {file_ext} 文件变更: {file_path}")
             return True
         
         # 如果是删除事件，暂不处理

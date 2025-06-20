@@ -206,7 +206,7 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 for file in files:
                     if file.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
                         images.append(file)
-                    elif file.lower().endswith('.pdf'):
+                    elif file.lower().endswith(('.pdf', '.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls')):
                         documents.append(file)
                 
                 # 准备响应
@@ -256,6 +256,92 @@ class GalleryHandler(SimpleHTTPRequestHandler):
         path = parsed_path.path
         
         logger.info(f"处理POST请求: {path}")
+        
+        # 处理文档内容API请求
+        if path == '/api/document-content':
+            try:
+                # 获取请求内容长度
+                content_length = int(self.headers['Content-Length'])
+                post_data = self.rfile.read(content_length)
+                
+                # 解析JSON数据
+                data = json.loads(post_data.decode('utf-8'))
+                filename = data.get('filename', '')
+                
+                logger.info(f"请求文档内容: {filename}")
+                
+                if not filename:
+                    raise ValueError("文件名不能为空")
+                
+                # 获取文档处理器
+                try:
+                    from document_processors.enhanced_document_processor import get_enhanced_document_processor
+                    processor = get_enhanced_document_processor()
+                    
+                    # 构建文件路径
+                    file_path = os.path.join('images', filename)
+                    if not os.path.exists(file_path):
+                        raise FileNotFoundError(f"文件不存在: {file_path}")
+                    
+                    # 获取特定处理器
+                    specific_processor = processor._get_processor(file_path)
+                    if not specific_processor:
+                        raise ValueError(f"不支持的文件格式: {filename}")
+                    
+                    # 提取文本内容
+                    content = specific_processor.extract_text(file_path)
+                    
+                    # 提取元数据
+                    metadata = specific_processor.extract_metadata(file_path)
+                    
+                    # 准备响应
+                    response_data = {
+                        'success': True,
+                        'content': content,
+                        'metadata': {
+                            'filename': filename,
+                            'processor': specific_processor.name,
+                            'document_type': metadata.get('document_type', '未知'),
+                            'file_size': metadata.get('file_size', 0),
+                            'processed_time': metadata.get('processed_time', '未知')
+                        }
+                    }
+                    
+                    logger.info(f"成功提取文档内容: {filename}, 长度: {len(content)} 字符")
+                    
+                except Exception as e:
+                    logger.error(f"提取文档内容失败: {filename} - {e}")
+                    response_data = {
+                        'success': False,
+                        'error': str(e),
+                        'content': None
+                    }
+                
+                # 发送响应
+                response_json = json.dumps(response_data, ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(response_json)))
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(response_json)
+                return
+                
+            except Exception as e:
+                logger.error(f"处理文档内容API请求时出错: {str(e)}")
+                # 发送错误响应
+                error_response = json.dumps({
+                    'success': False,
+                    'error': str(e),
+                    'content': None
+                }, ensure_ascii=False).encode('utf-8')
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(error_response)))
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(error_response)
+                return
         
         # 处理聊天API请求
         if path == '/chatbot-api':
