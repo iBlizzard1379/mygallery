@@ -511,7 +511,7 @@ def ensure_chatbot_module():
                         class DirectOpenAIChatHandler:
                             def __init__(self):
                                 self.api_key = os.environ.get("OPENAI_API_KEY")
-                                self.model = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+                                self.model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
                                 self.client = OpenAI(api_key=self.api_key)
                                 self.messages = [{"role": "system", "content": "你是一个画廊中的智能助手，能够回答关于展示的PDF文档的问题。"}]
                             
@@ -576,7 +576,7 @@ def ensure_chatbot_module():
                         class DirectOpenAIChatHandler:
                             def __init__(self):
                                 self.api_key = os.environ.get("OPENAI_API_KEY")
-                                self.model = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
+                                self.model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
                                 self.client = OpenAI(api_key=self.api_key)
                                 self.messages = [{"role": "system", "content": "你是一个画廊中的智能助手，能够回答关于展示的PDF文档的问题。"}]
                             

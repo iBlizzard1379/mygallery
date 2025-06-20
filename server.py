@@ -270,10 +270,46 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 
                 logger.info(f"收到聊天信息: {message}")
                 
-                # 处理聊天消息
-                if chatbot and hasattr(chatbot, 'chat_handler') and chatbot.chat_handler:
-                    # 使用聊天处理器处理消息
+                # 检查处理器可用性
+                chatbot_available = chatbot and hasattr(chatbot, 'chat_handler') and chatbot.chat_handler is not None
+                rag_chain_available = False
+                
+                # 检查是否有RAG链可用
+                try:
+                    from rag_chain import get_rag_chain
+                    rag_chain = get_rag_chain()
+                    rag_chain_available = rag_chain is not None
+                    logger.info(f"RAG链可用: {rag_chain_available}")
+                except Exception as e:
+                    logger.error(f"无法导入或初始化RAG链: {e}")
+                    rag_chain_available = False
+                
+                logger.info(f"chatbot可用: {chatbot_available}, RAG链可用: {rag_chain_available}")
+                
+                # 优先使用RAG链（自动决定是否使用搜索工具）
+                if rag_chain_available:
                     try:
+                        logger.info("使用RAG链处理查询")
+                        result = rag_chain.query(message)
+                        response = result.get("answer", "")
+                        logger.info(f"RAG链回复: {response[:50]}...")
+                    except Exception as e:
+                        logger.error(f"RAG链处理错误: {e}")
+                        # 回退到普通聊天处理器
+                        if chatbot_available:
+                            logger.info("RAG链失败，尝试使用chatbot处理器")
+                            try:
+                                response = chatbot.chat_handler.chat(message)
+                                logger.info(f"回复: {response[:50]}...")
+                            except Exception as e2:
+                                logger.error(f"chatbot处理器错误: {e2}")
+                                response = f"抱歉，无法处理您的请求: {str(e2)}"
+                        else:
+                            response = f"抱歉，无法处理您的请求: {str(e)}"
+                # 使用普通聊天处理器
+                elif chatbot_available:
+                    try:
+                        logger.info("使用chatbot处理器")
                         response = chatbot.chat_handler.chat(message)
                         logger.info(f"聊天回复: {response[:50]}...")
                     except Exception as e:
@@ -282,7 +318,7 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 else:
                     # 后备回复
                     response = f"收到您的消息：{message}。感谢您的提问，我会尽力回答。"
-                    logger.warning("聊天处理器不可用，使用后备回复")
+                    logger.warning("所有聊天处理器不可用，使用后备回复")
                 
                 # 准备响应
                 response_data = {

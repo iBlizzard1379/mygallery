@@ -96,31 +96,14 @@ class DocumentProcessor:
         self.document_metadata = self._load_document_metadata()
     
     def _init_embeddings(self):
-        """
-        初始化嵌入模型
-        
-        Returns:
-            配置好的嵌入模型
-        """
+        """初始化嵌入模型（仅使用OpenAI）"""
         try:
-            # 尝试使用OpenAI的嵌入模型
             if env_manager and env_manager.openai_api_key:
                 logger.info("使用OpenAI嵌入模型")
                 return OpenAIEmbeddings(openai_api_key=env_manager.openai_api_key)
-            
-            # 如果没有OpenAI API Key，尝试使用HuggingFace的嵌入模型
-            elif env_manager and env_manager.huggingface_api_key:
-                logger.info("使用HuggingFace嵌入模型")
-                return HuggingFaceEmbeddings(
-                    model_name="sentence-transformers/all-MiniLM-L6-v2",
-                    huggingfacehub_api_token=env_manager.huggingface_api_key
-                )
-            
-            # 如果都没有配置，使用OpenAI的嵌入模型（需要在环境变量中设置API Key）
             else:
-                logger.warning("未配置API Key，使用OpenAI嵌入模型（需在环境中设置OPENAI_API_KEY）")
+                logger.warning("未配置OpenAI API Key，使用默认OpenAI嵌入模型")
                 return OpenAIEmbeddings()
-        
         except Exception as e:
             logger.error(f"初始化嵌入模型失败: {e}")
             raise

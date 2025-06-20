@@ -7,13 +7,13 @@ import logging
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
+from config import DefaultConfig
 
 # LangChain导入
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from langchain_community.llms import HuggingFaceEndpoint
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
@@ -45,7 +45,7 @@ class OpenAIModel(BaseLLMModel):
     
     def __init__(self, model_name: str = None, temperature: float = 0.7):
         self.api_key = os.getenv("OPENAI_API_KEY")
-        self.model_name = model_name or os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+        self.model_name = model_name or os.getenv("OPENAI_MODEL", DefaultConfig.DEFAULT_OPENAI_MODEL)
         self.temperature = temperature
     
     def get_llm(self) -> BaseChatModel:
@@ -62,59 +62,33 @@ class OpenAIModel(BaseLLMModel):
             streaming=False       # 禁用流式传输以避免连接问题
         )
 
-class HuggingFaceModel(BaseLLMModel):
-    """HuggingFace模型"""
-    
-    def __init__(self, model_name: str = None, temperature: float = 0.7):
-        self.api_key = os.getenv("HUGGINGFACE_API_KEY")
-        self.model_name = model_name or os.getenv("HUGGINGFACE_MODEL", "meta-llama/Llama-2-7b-chat-hf")
-        self.temperature = temperature
-    
-    def get_llm(self) -> BaseChatModel:
-        """返回HuggingFace LLM实例"""
-        if not self.api_key:
-            raise ValueError("未设置HuggingFace API Key")
-        
-        return HuggingFaceEndpoint(
-            huggingfacehub_api_token=self.api_key,
-            repo_id=self.model_name,
-            temperature=self.temperature
-        )
-
 class ChatHandler:
-    """
-    聊天处理器，管理聊天历史和模型响应
-    """
+    """聊天处理器，管理聊天历史和模型响应"""
     
-    def __init__(self, model_type: str = "openai"):
-        """
-        初始化聊天处理器
-        
-        Args:
-            model_type: 使用的模型类型 ("openai" 或 "huggingface")
-        """
-        self.model_type = model_type
+    def __init__(self):
+        """初始化聊天处理器"""
         self.llm = self._init_llm()
         self.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
         self.system_prompt = os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
         self.chat_history = []
-        
-        # 初始化聊天
         self._init_conversation()
     
     def _init_llm(self) -> BaseChatModel:
-        """初始化LLM"""
-        try:
-            if self.model_type.lower() == "openai":
-                return OpenAIModel().get_llm()
-            elif self.model_type.lower() == "huggingface":
-                return HuggingFaceModel().get_llm()
-            else:
-                logger.warning(f"未知模型类型: {self.model_type}，使用默认OpenAI模型")
-                return OpenAIModel().get_llm()
-        except Exception as e:
-            logger.error(f"初始化LLM失败: {e}")
-            raise
+        """初始化OpenAI LLM"""
+        api_key = os.getenv("OPENAI_API_KEY")
+        model_name = os.getenv("OPENAI_MODEL", DefaultConfig.DEFAULT_OPENAI_MODEL)
+        
+        if not api_key:
+            raise ValueError("未设置OpenAI API Key")
+        
+        return ChatOpenAI(
+            openai_api_key=api_key,
+            model_name=model_name,
+            temperature=0.7,
+            request_timeout=120,
+            max_retries=5,
+            streaming=False
+        )
     
     def _init_conversation(self) -> None:
         """初始化对话，设置系统提示词"""
@@ -176,14 +150,10 @@ def get_available_models() -> Dict[str, List[str]]:
     """
     models = {
         "openai": [
+            "gpt-4o-mini",
             "gpt-3.5-turbo",
             "gpt-4",
             "gpt-4-turbo"
-        ],
-        "huggingface": [
-            "meta-llama/Llama-2-7b-chat-hf",
-            "meta-llama/Llama-2-13b-chat-hf",
-            "mistralai/Mistral-7B-Instruct-v0.1"
         ]
     }
     
@@ -204,11 +174,11 @@ def create_chat_handler(model_type: str = None) -> ChatHandler:
         model_type = os.getenv("LLM_MODEL_TYPE", "openai")
     
     try:
-        return ChatHandler(model_type=model_type)
+        return ChatHandler()
     except Exception as e:
         logger.error(f"创建聊天处理器失败: {e}")
         # 如果无法创建指定模型，尝试使用备用模型
         if model_type.lower() != "openai":
             logger.info("尝试使用OpenAI模型作为备用")
-            return ChatHandler(model_type="openai")
+            return ChatHandler()
         raise 

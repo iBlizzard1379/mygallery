@@ -81,15 +81,23 @@ DEFAULT_QA_TEMPLATE = """
 
 # 新的系统提示模板
 SYSTEM_PROMPT = """你是画廊中的智能助手，能够回答关于PDF文档和互联网信息的问题。
-你有两个主要信息来源：
-1. 本地文档数据库 - 包含已上传的PDF文档
-2. 互联网搜索 - 可以获取最新的网络信息
 
-当用户询问的内容可能需要最新信息，如当前新闻、最近事件、最新产品或实时数据时，你应该使用搜索工具。
-当用户询问的内容可能在本地文档中找到，如文档内容解释、概念定义或文档中提到的信息时，你应该使用文档检索工具。
+**重要原则：始终优先使用本地文档数据库！**
 
-回答时，请明确说明你的信息来源。如果使用了搜索工具，请引用相关来源。
-总是先仔细思考用户问题的性质，再决定使用哪个工具。如果不确定，优先使用本地文档检索工具。
+工作流程：
+1. **第一步：必须先使用document_search工具搜索本地文档数据库**
+2. **第二步：如果本地文档中确实没有相关信息或信息不够完整，才考虑使用internet_search工具**
+
+你有两个信息来源：
+1. 本地文档数据库 - 包含已上传的PDF文档（优先使用）
+2. 互联网搜索 - 获取最新网络信息（仅在本地文档无法回答时使用）
+
+使用internet_search工具的条件（必须同时满足）：
+- 已经使用document_search工具搜索过本地文档
+- 本地文档中确实没有相关信息
+- 用户问题涉及最新信息、实时数据、当前新闻等
+
+回答时，请明确说明你的信息来源。
 """
 
 # 工具调用代理模板 - 修复缺少的agent_scratchpad变量
@@ -169,7 +177,13 @@ class RAGChain:
             retriever_tool = create_retriever_tool(
                 retriever=retriever,
                 name="document_search",
-                description="搜索本地PDF文档库。当问题涉及文档内容、历史信息、概念解释等不需要最新信息的内容时使用此工具。"
+                description="""【优先使用】搜索本地PDF文档库。这是主要的信息来源，包含所有已上传的PDF文档内容。
+                对于任何问题，都应该首先使用此工具搜索本地文档数据库，包括但不限于：
+                - 文档内容、概念解释
+                - 技术规格、产品信息  
+                - 历史信息、背景资料
+                - 任何可能在文档中出现的信息
+                务必优先使用此工具！"""
             )
             tools.append(retriever_tool)
         
@@ -186,7 +200,15 @@ class RAGChain:
                     Tool(
                         name="internet_search",
                         func=search_tool.invoke,
-                        description="搜索互联网获取最新信息。当问题涉及当前事件、新闻、最新数据、市场趋势等需要最新信息的内容时使用此工具。",
+                        description="""【备用工具】搜索互联网获取最新信息。
+                        ⚠️ 使用前提：必须先使用document_search工具搜索本地文档，且确认本地文档无相关信息！
+                        
+                        仅在以下情况使用：
+                        - 已经使用document_search搜索过本地文档
+                        - 本地文档确实没有相关信息
+                        - 问题涉及最新信息：当前新闻、实时数据、市场趋势等
+                        
+                        绝不可直接使用此工具，必须先搜索本地文档！""",
                         return_direct=False
                     )
                 )
@@ -270,7 +292,7 @@ class RAGChain:
     
     def query(self, query: str) -> Dict[str, Any]:
         """
-        执行查询，自动判断是使用工具还是传统RAG
+        执行查询，严格按照优先级：先本地文档，后互联网搜索
         
         Args:
             query: 查询文本
@@ -283,9 +305,8 @@ class RAGChain:
         # 使用代理执行器处理查询
         if self.agent_executor:
             try:
-                logger.info("使用工具调用代理处理查询")
-                # 构建带有历史的输入
-                # 转换历史消息为字符串，简化处理
+                logger.info("使用工具调用代理处理查询，优先本地文档检索")
+                # 构建带有历史的输入，并强调必须先搜索本地文档
                 history_str = ""
                 if self.chat_history:
                     for i in range(0, len(self.chat_history) - 1, 2):
@@ -296,10 +317,16 @@ class RAGChain:
                             if isinstance(human_msg, HumanMessage) and isinstance(ai_msg, AIMessage):
                                 history_str += f"用户: {human_msg.content}\n助手: {ai_msg.content}\n\n"
                 
-                input_with_history = f"聊天历史:\n{history_str}\n用户问题: {query}"
+                # 修改输入格式，强调优先级
+                enhanced_input = f"""聊天历史:
+{history_str}
+
+用户问题: {query}
+
+请注意：必须首先使用document_search工具搜索本地文档数据库！只有在本地文档确实没有相关信息时，才可以考虑使用internet_search工具。"""
                 
                 # 执行代理
-                result = self.agent_executor.invoke({"input": input_with_history})
+                result = self.agent_executor.invoke({"input": enhanced_input})
                 response = result.get("output", "")
                 
                 # 更新聊天历史
@@ -308,18 +335,49 @@ class RAGChain:
                 
                 # 构建结果对象 (与传统RAG结果格式保持一致)
                 source_docs = []
-                if "document_search" in str(result):
-                    tool_outputs = result.get("intermediate_steps", [])
-                    for step in tool_outputs:
-                        action, output = step
-                        if action.tool == "document_search" and isinstance(output, list):
-                            source_docs.extend(output)
+                search_type = "agent"
+                
+                # 分析工具使用情况
+                intermediate_steps = result.get("intermediate_steps", [])
+                used_document_search = False
+                used_internet_search = False
+                
+                for step in intermediate_steps:
+                    if len(step) >= 2:
+                        action, output = step[0], step[1]
+                        # 检查action对象的工具名称
+                        tool_name = getattr(action, 'tool', '') or getattr(action, 'name', '')
+                        
+                        if tool_name == "document_search":
+                            used_document_search = True
+                            if isinstance(output, list):
+                                source_docs.extend(output)
+                            elif isinstance(output, str) and "第" in output and "页" in output:
+                                # 如果输出是文档内容字符串，创建Document对象
+                                from langchain_core.documents import Document
+                                doc = Document(page_content=output, metadata={"source": "document_search"})
+                                source_docs.append(doc)
+                        elif tool_name == "internet_search":
+                            used_internet_search = True
+                
+                # 记录工具使用情况
+                if used_document_search and used_internet_search:
+                    search_type = "document+internet"
+                    logger.info("使用了本地文档检索和互联网搜索")
+                elif used_document_search:
+                    search_type = "document_only"
+                    logger.info("仅使用了本地文档检索")
+                elif used_internet_search:
+                    search_type = "internet_only"
+                    logger.warning("⚠️ 仅使用了互联网搜索，未优先检索本地文档")
                 
                 return {
                     "answer": response,
                     "source_documents": source_docs,
                     "success": True,
-                    "search_type": "agent"
+                    "search_type": search_type,
+                    "used_document_search": used_document_search,
+                    "used_internet_search": used_internet_search
                 }
                 
             except Exception as e:
