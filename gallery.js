@@ -375,10 +375,67 @@ async function initGallery() {
             await addFramesToWall('right', documents, false);
         } else {
             // 如果没有图片，只显示PDF文件
-            log("没有找到图片文件，将PDF文件显示在两侧");
-            const halfDocs = Math.ceil(documents.length / 2);
-            await addFramesToWall('left', documents.slice(0, halfDocs), false);
-            await addFramesToWall('right', documents.slice(halfDocs), false);
+            log("没有找到图片文件，将PDF文件按编号交替显示在两侧");
+            
+            // 按编号分配文档到左右墙：奇数编号→左墙，偶数编号→右墙
+            const leftWallDocs = [];
+            const rightWallDocs = [];
+            
+            documents.forEach((docName, index) => {
+                // 提取文件名开头的数字
+                const match = docName.match(/^(\d+)/);
+                if (match) {
+                    const fileNumber = parseInt(match[1]);
+                    if (fileNumber % 2 === 1) {
+                        // 奇数编号放左墙
+                        leftWallDocs.push(docName);
+                        log(`文档 ${docName} (编号${fileNumber}) → 左墙第${leftWallDocs.length}位置`);
+                    } else {
+                        // 偶数编号放右墙
+                        rightWallDocs.push(docName);
+                        log(`文档 ${docName} (编号${fileNumber}) → 右墙第${rightWallDocs.length}位置`);
+                    }
+                } else {
+                    // 如果没有数字编号，按原有逻辑分配
+                    if (index % 2 === 0) {
+                        leftWallDocs.push(docName);
+                    } else {
+                        rightWallDocs.push(docName);
+                    }
+                    log(`文档 ${docName} (无编号) → ${index % 2 === 0 ? '左' : '右'}墙`);
+                }
+            });
+            
+            // 对左墙和右墙的文档按编号排序
+            leftWallDocs.sort((a, b) => {
+                const matchA = a.match(/^(\d+)/);
+                const matchB = b.match(/^(\d+)/);
+                if (matchA && matchB) {
+                    return parseInt(matchA[1]) - parseInt(matchB[1]);
+                }
+                return a.localeCompare(b);
+            });
+            
+            rightWallDocs.sort((a, b) => {
+                const matchA = a.match(/^(\d+)/);
+                const matchB = b.match(/^(\d+)/);
+                if (matchA && matchB) {
+                    return parseInt(matchA[1]) - parseInt(matchB[1]);
+                }
+                return a.localeCompare(b);
+            });
+            
+            log(`最终分配: 左墙${leftWallDocs.length}个文档, 右墙${rightWallDocs.length}个文档`);
+            log(`左墙文档（按编号排序）: ${leftWallDocs.join(', ')}`);
+            log(`右墙文档（按编号排序）: ${rightWallDocs.join(', ')}`);
+            
+            // 添加文档到对应墙壁
+            if (leftWallDocs.length > 0) {
+                await addFramesToWall('left', leftWallDocs, false);
+            }
+            if (rightWallDocs.length > 0) {
+                await addFramesToWall('right', rightWallDocs, false);
+            }
         }
         
         // 隐藏加载提示

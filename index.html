@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 知识画廊</title>
+    <title>AI知识画廊-Ask me anything about UEC v1.0</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖼️</text></svg>">
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
     <style>
@@ -30,12 +30,16 @@
         #info {
             position: absolute;
             top: 10px;
-            left: 10px;
+            left: 50%;
+            transform: translateX(-50%);
             color: white;
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 10px;
-            border-radius: 5px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 8px;
             z-index: 100;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
         #controls {
             position: absolute;
@@ -73,30 +77,55 @@
             display: none;
         }
         
+        /* 开发者信息样式 */
+        #developer-info {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: #ffffff;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 10px 16px;
+            border-radius: 6px;
+            z-index: 100;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: right;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.8);
+            transition: all 0.3s ease;
+        }
+        
+        #developer-info:hover {
+            background-color: rgba(0, 0, 0, 0.8);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-1px);
+        }
+        
         /* 聊天按钮样式 */
         #chat-button {
             position: absolute;
-            top: 120px;
-            left: 620px;
+            top: 110px;
+            left: 605px;
             width: 60px;
             height: 60px;
             border-radius: 50%;
-            background-color: rgba(0, 0, 0, 0.5);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            border: none;
+            border: 2px solid rgba(255, 255, 255, 0.2);
             cursor: pointer;
             z-index: 300;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-            transition: opacity 0.3s ease;
-            transform: translateY(-50%);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
         }
         
         #chat-button:hover {
-            background-color: rgba(0, 0, 0, 0.7);
-            opacity: 0.9;
+            transform: scale(1.1);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+            border-color: rgba(255, 255, 255, 0.4);
         }
         
         /* 聊天图标 */
@@ -108,44 +137,49 @@
         /* 聊天标签样式 */
         #chat-label {
             position: absolute;
-            top: 70px;
-            left: 620px;
+            top: 60px;
+            left: 590px;
             color: white;
-            background-color: rgba(0, 0, 0, 0.7);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 6px 12px;
-            border-radius: 15px;
-            font-size: 14px;
-            font-weight: bold;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 600;
             z-index: 299;
             white-space: nowrap;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             pointer-events: none;
-            text-align: left;
+            text-align: center;
             transition: all 0.3s ease;
             line-height: 1.2;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
         }
         
         /* 当聊天按钮悬停时，标签高亮显示 */
         #chat-button:hover ~ #chat-label {
-            background-color: rgba(0, 0, 0, 0.9);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.5);
             transform: scale(1.05);
+            border-color: rgba(255, 255, 255, 0.4);
+            filter: brightness(1.1);
         }
         
         /* 聊天窗口样式 */
         #chat-window {
             position: absolute;
-            top: 90px;
-            left: 650px;
+            top: 85px;
+            left: 675px;
             transform: none;
             width: 450px;
             height: 240px;
-            background-color: rgba(0, 0, 0, 0.9);
+            background-color: #ffffff;
             border-radius: 10px;
             z-index: 300;
             display: none;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             resize: both;
             min-width: 300px;
             min-height: 200px;
@@ -171,31 +205,44 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 15px;
-            background-color: rgba(0, 0, 0, 1);
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-top-left-radius: 10px;
             border-top-right-radius: 10px;
             cursor: move;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         
         #chat-header h3 {
             margin: 0;
             color: white;
             font-size: 16px;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
         }
         
         #chat-controls {
             display: flex;
+            gap: 8px;
         }
         
         .chat-control-button {
-            background: none;
+            background: rgba(255, 255, 255, 0.2);
             border: none;
             color: white;
             cursor: pointer;
-            margin-left: 10px;
-            padding: 0;
+            padding: 6px;
+            border-radius: 4px;
             font-size: 16px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .chat-control-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
         }
         
         /* 聊天内容区域 */
@@ -212,15 +259,16 @@
             width: 100%;
             height: 100%;
             border: none;
-            background-color: rgba(0, 0, 0, 0.9);
+            background-color: #ffffff;
             overflow: hidden;
+            border-radius: 0 0 10px 10px;
         }
     </style>
 </head>
 <body>
     <div id="container"></div>
     <div id="info">
-        <h2>AI 知识画廊</h2>
+        <h2>AI知识画廊--Ask me anything about UEC v1.0</h2>
     </div>
     <div id="controls">
         <h3>控制说明：</h3>
@@ -236,6 +284,11 @@
     <div id="loading">正在加载画廊，请稍候...</div>
     <div id="debug"></div>
     
+    <!-- 开发者信息 -->
+    <div id="developer-info">
+        Developed by Bin Liu (bliu3@cisco.com)
+    </div>
+    
     <!-- 聊天按钮 -->
     <button id="chat-button" title="打开聊天机器人">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -244,12 +297,12 @@
     </button>
     
     <!-- 聊天标签 -->
-    <div id="chat-label">画廊智能助手</div>
+    <div id="chat-label">AI画廊智能助手</div>
     
     <!-- 聊天窗口 -->
     <div id="chat-window">
         <div id="chat-header">
-            <h3>画廊智能助手</h3>
+            <h3>AI画廊智能助手</h3>
             <div id="chat-controls">
                 <button class="chat-control-button" id="chat-minimize" title="最小化">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -273,7 +326,7 @@
         }
     </script>
     
-    <script type="module" src="gallery.js?v=20250620"></script>
+    <script type="module" src="gallery.js?v=20250715e"></script>
     <script type="module" src="chatbot-ui.js"></script>
 </body>
 </html> 

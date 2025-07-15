@@ -5,6 +5,7 @@ RAG链模块
 
 import os
 import logging
+import threading
 from typing import List, Dict, Any, Optional, Union, Tuple
 
 # LangChain导入
@@ -82,22 +83,26 @@ DEFAULT_QA_TEMPLATE = """
 # 新的系统提示模板
 SYSTEM_PROMPT = """你是画廊中的智能助手，能够回答关于PDF文档和互联网信息的问题。
 
-**重要原则：始终优先使用本地文档数据库！**
+**重要工作流程：**
 
-工作流程：
 1. **第一步：必须先使用document_search工具搜索本地文档数据库**
-2. **第二步：如果本地文档中确实没有相关信息或信息不够完整，才考虑使用internet_search工具**
+   - 对于任何问题都要首先搜索本地文档
 
-你有两个信息来源：
-1. 本地文档数据库 - 包含已上传的PDF文档（优先使用）
-2. 互联网搜索 - 获取最新网络信息（仅在本地文档无法回答时使用）
+2. **第二步：评估本地搜索结果的完整性**
+   - 如果本地文档完全回答了问题 → 基于本地文档回答
+   - 如果本地文档没有相关信息 → 继续第三步
+   - 如果本地文档信息不完整或涉及最新动态 → 继续第三步
 
-使用internet_search工具的条件（必须同时满足）：
-- 已经使用document_search工具搜索过本地文档
-- 本地文档中确实没有相关信息
-- 用户问题涉及最新信息、实时数据、当前新闻等
+3. **第三步：使用internet_search工具补充信息**
+   - 搜索最新、实时或本地文档未覆盖的信息
+   - 将互联网信息与本地文档结合，提供完整答案
 
-回答时，请明确说明你的信息来源。
+**特别注意：**
+对于涉及"最新"、"2024年"、"当前"、"现在"、"趋势"、"发展"等时间敏感词汇的问题，即使本地文档有相关信息，也应该使用internet_search获取最新补充信息。
+
+**回答格式：**
+- 明确说明信息来源（本地文档、互联网或两者结合）
+- 如果使用了互联网搜索，要说明"为了提供最新信息，我还搜索了互联网"
 """
 
 # 工具调用代理模板 - 修复缺少的agent_scratchpad变量
@@ -116,14 +121,32 @@ class RAGChain:
     
     def __init__(self, vectorstore: Optional[VectorStore] = None, model_type: str = "openai"):
         """
-        初始化RAG链
+        初始化RAG链 - 支持独立实例
         
         Args:
             vectorstore: 向量数据库实例
             model_type: 使用的模型类型 ("openai" 或 "huggingface")
         """
-        # 设置向量数据库
-        self.vectorstore = vectorstore
+        # 获取资源管理器
+        try:
+            from resource_manager import get_resource_manager
+            self.resource_manager = get_resource_manager()
+        except ImportError:
+            logger.warning("无法导入资源管理器，使用原有方式")
+            self.resource_manager = None
+        
+        # 设置向量数据库 - 优先使用资源管理器
+        if not vectorstore and self.resource_manager:
+            try:
+                self.vectorstore = self.resource_manager.get_vectorstore()
+                logger.info("使用资源管理器获取向量数据库")
+            except Exception as e:
+                logger.error(f"从资源管理器获取向量数据库失败: {e}")
+                self.vectorstore = None
+        elif not vectorstore and document_processor:
+            self.vectorstore = document_processor.get_vectorstore()
+        else:
+            self.vectorstore = vectorstore
         
         # 模型类型
         if env_manager and env_manager.model_type:
@@ -141,8 +164,11 @@ class RAGChain:
             self.llm = None
             logger.error(f"初始化聊天处理器失败: {e}")
         
-        # 对话历史
+        # 每个实例独立的聊天历史
         self.chat_history = []
+        
+        # 实例级别的线程锁
+        self._lock = threading.Lock()
         
         # 提示模板
         self.condense_question_prompt = PromptTemplate.from_template(
@@ -152,16 +178,14 @@ class RAGChain:
             DEFAULT_QA_TEMPLATE
         )
         
-        # 初始化向量数据库
-        if not self.vectorstore and document_processor:
-            self.vectorstore = document_processor.get_vectorstore()
-        
         # 初始化工具和代理
         self.tools = self._init_tools()
         self.agent_executor = self._init_agent()
         
         # 备用RAG链 (如果工具调用不可用)
         self.chain = self._init_chain()
+        
+        logger.info(f"RAG链实例初始化完成: {id(self)}")
     
     def _init_tools(self) -> List[Tool]:
         """初始化工具集合"""
@@ -200,15 +224,15 @@ class RAGChain:
                     Tool(
                         name="internet_search",
                         func=search_tool.invoke,
-                        description="""【备用工具】搜索互联网获取最新信息。
-                        ⚠️ 使用前提：必须先使用document_search工具搜索本地文档，且确认本地文档无相关信息！
+                        description="""搜索互联网获取最新信息和实时数据。
                         
-                        仅在以下情况使用：
-                        - 已经使用document_search搜索过本地文档
-                        - 本地文档确实没有相关信息
-                        - 问题涉及最新信息：当前新闻、实时数据、市场趋势等
+                        使用情况：
+                        - 已经使用document_search搜索过本地文档后
+                        - 本地文档没有相关信息或信息不完整
+                        - 问题涉及最新信息、实时数据、当前趋势、最新发展等
+                        - 需要补充最新的行业动态、新闻、技术发展等
                         
-                        绝不可直接使用此工具，必须先搜索本地文档！""",
+                        特别适用于包含"最新"、"2024"、"当前"、"趋势"、"发展"等关键词的问题。""",
                         return_direct=False
                     )
                 )
@@ -292,7 +316,20 @@ class RAGChain:
     
     def query(self, query: str) -> Dict[str, Any]:
         """
-        执行查询，严格按照优先级：先本地文档，后互联网搜索
+        线程安全的查询处理
+        
+        Args:
+            query: 查询文本
+        
+        Returns:
+            包含回答和相关文档的字典
+        """
+        with self._lock:
+            return self._internal_query(query)
+    
+    def _internal_query(self, query: str) -> Dict[str, Any]:
+        """
+        内部查询处理逻辑，严格按照优先级：先本地文档，后互联网搜索
         
         Args:
             query: 查询文本
@@ -317,13 +354,34 @@ class RAGChain:
                             if isinstance(human_msg, HumanMessage) and isinstance(ai_msg, AIMessage):
                                 history_str += f"用户: {human_msg.content}\n助手: {ai_msg.content}\n\n"
                 
-                # 修改输入格式，强调优先级
-                enhanced_input = f"""聊天历史:
+                # 分析查询是否需要最新信息
+                needs_latest_info = any(keyword in query.lower() for keyword in [
+                    '最新', '2024', '2025', '当前', '现在', '趋势', '发展', '近期', '最近',
+                    '今年', '今天', '最新动态', '最新消息', '最新情况', '实时', '最新版本'
+                ])
+                
+                # 修改输入格式，强调完整的工作流程
+                if needs_latest_info:
+                    enhanced_input = f"""聊天历史:
 {history_str}
 
 用户问题: {query}
 
-请注意：必须首先使用document_search工具搜索本地文档数据库！只有在本地文档确实没有相关信息时，才可以考虑使用internet_search工具。"""
+重要提示：这个问题涉及最新信息或时间敏感内容。请按照以下流程处理：
+1. 首先使用document_search工具搜索本地文档
+2. 然后必须使用internet_search工具获取最新信息
+3. 结合两个来源的信息提供完整答案
+
+即使本地文档有相关信息，也要通过互联网搜索获取最新补充信息！"""
+                else:
+                    enhanced_input = f"""聊天历史:
+{history_str}
+
+用户问题: {query}
+
+请按照以下流程处理：
+1. 首先使用document_search工具搜索本地文档数据库
+2. 如果本地文档信息不完整或没有相关信息，请使用internet_search工具补充"""
                 
                 # 执行代理
                 result = self.agent_executor.invoke({"input": enhanced_input})
@@ -465,21 +523,23 @@ class RAGChain:
             message: 消息内容
             role: 消息角色 ('human' 或 'ai')
         """
-        if isinstance(message, BaseMessage):
-            self.chat_history.append(message)
-        else:
-            if role.lower() == "human":
-                self.chat_history.append(HumanMessage(content=message))
-            elif role.lower() == "ai":
-                self.chat_history.append(AIMessage(content=message))
+        with self._lock:
+            if isinstance(message, BaseMessage):
+                self.chat_history.append(message)
             else:
-                logger.warning(f"未知角色: {role}，使用'human'")
-                self.chat_history.append(HumanMessage(content=message))
+                if role.lower() == "human":
+                    self.chat_history.append(HumanMessage(content=message))
+                elif role.lower() == "ai":
+                    self.chat_history.append(AIMessage(content=message))
+                else:
+                    logger.warning(f"未知角色: {role}，使用'human'")
+                    self.chat_history.append(HumanMessage(content=message))
     
     def clear_history(self) -> None:
         """清空聊天历史"""
-        self.chat_history = []
-        logger.info("已清空聊天历史")
+        with self._lock:
+            self.chat_history = []
+            logger.info("已清空聊天历史")
     
     def get_chat_history(self) -> List[BaseMessage]:
         """获取聊天历史"""
@@ -518,20 +578,27 @@ class RAGChain:
         
         return formatted
 
-# 单例模式
-_rag_chain_instance = None
-
-def get_rag_chain() -> RAGChain:
+# 移除全局单例，改为工厂方法
+def create_rag_chain() -> RAGChain:
     """
-    获取RAG链实例
+    创建新的RAG链实例
     
     Returns:
-        RAG链实例
+        新的RAG链实例
     """
-    global _rag_chain_instance
-    if _rag_chain_instance is None:
-        _rag_chain_instance = RAGChain()
-    return _rag_chain_instance
+    return RAGChain()
+
+# 保持向后兼容 - 现在每次调用都创建新实例
+def get_rag_chain() -> RAGChain:
+    """
+    获取RAG链实例（向后兼容）
+    注意：现在每次调用都会创建新的实例，不再是单例
+    
+    Returns:
+        新的RAG链实例
+    """
+    logger.warning("get_rag_chain()现在创建新实例，建议使用create_rag_chain()")
+    return create_rag_chain()
 
 # 测试代码
 if __name__ == "__main__":
