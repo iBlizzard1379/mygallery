@@ -1,0 +1,71 @@
+# Python缓存和环境
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Git文件
+.git/
+.gitignore
+
+# 日志文件
+*.log
+logs/
+
+# 测试和临时文件
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# 构建文件
+build/
+dist/
+*.egg-info/
+
+# 环境配置文件（包含敏感信息）
+.env
+.env.local
+.env.production
+
+# 文档
+README*.md
+*.md
+LICENSE
+
+# 部署脚本
+deploy_*.sh
+docker-compose*.yml
+
+# 锁文件（使用requirements.txt）
+uv.lock
+
+# 临时和备份文件
+*.tmp
+*.bak
+*.backup 

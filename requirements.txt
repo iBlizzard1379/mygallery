@@ -15,6 +15,13 @@ faiss-cpu==1.11.0
 # PDF文档处理
 pypdf==5.4.0
 
+# Office文档处理
+python-pptx==1.0.0
+
+# 图像处理和OCR
+Pillow==11.3.0
+pytesseract==0.3.13
+
 # 文件系统监控
 watchdog==6.0.0
 
@@ -26,7 +33,7 @@ google-search-results==2.4.2
 openai==1.77.0
 
 # 数据验证和类型检查
-pydantic==2.11.4
+pydantic==2.11.4 
 
 # 系统监控依赖
 psutil==6.1.0

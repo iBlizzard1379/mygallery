@@ -135,13 +135,11 @@ class RAGChain:
             logger.warning("无法导入资源管理器，使用原有方式")
             self.resource_manager = None
         
-        # 设置向量数据库 - 优先使用资源管理器
-        if not vectorstore and self.resource_manager:
-            try:
-                self.vectorstore = self.resource_manager.get_vectorstore()
-                logger.info("使用资源管理器获取向量数据库")
-            except Exception as e:
-                logger.error(f"从资源管理器获取向量数据库失败: {e}")
+        # 向量存储处理
+        if vectorstore is None:
+            if document_processor and document_processor.is_initialized():
+                self.vectorstore = document_processor.get_vectorstore()
+            else:
                 self.vectorstore = None
         elif not vectorstore and document_processor:
             self.vectorstore = document_processor.get_vectorstore()

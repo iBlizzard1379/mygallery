@@ -1,0 +1,19 @@
+# Docker测试环境变量配置示例
+# 使用方法：cp docker-test-env.example .env.docker
+# 然后编辑.env.docker文件，填入您的真实API密钥
+
+# OpenAI API密钥 (必需)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# 搜索工具API密钥 (可选，但推荐配置)
+TAVILY_API_KEY=your_tavily_api_key_here
+SERPAPI_API_KEY=your_serpapi_api_key_here
+
+# 服务器配置
+PORT=8000
+
+# 日志级别
+LOG_LEVEL=INFO
+
+# 其他可选配置
+PYTHONUNBUFFERED=1 

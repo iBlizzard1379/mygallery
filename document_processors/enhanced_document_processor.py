@@ -337,6 +337,19 @@ class EnhancedDocumentProcessor:
         """获取向量数据库实例"""
         return self.vectorstore
     
+    def is_initialized(self) -> bool:
+        """
+        检查文档处理器是否已完成初始化
+        
+        Returns:
+            是否已完成初始化
+        """
+        return (
+            self.vectorstore is not None and 
+            self.embeddings is not None and 
+            len(self.processors) > 0
+        )
+    
     def search_documents(self, query: str, k: int = 5) -> List[Document]:
         """
         搜索文档
