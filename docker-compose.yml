@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  ai-gallery:
+    image: iblizzard1379/ai-gallery:v1.2
+    container_name: ai-gallery
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    volumes:
+      - ./vector_db:/app/vector_db
+      - ./logs:/app/logs
+      - ./images:/app/images  # 如果需要持久化上传的图片
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s 

@@ -45,11 +45,27 @@
             position: absolute;
             top: 10px;
             right: 10px;
-            color: white;
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 10px;
+            color: rgba(255, 255, 255, 0.7);
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 8px;
             border-radius: 5px;
             z-index: 100;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        #controls h3 {
+            margin: 0 0 6px 0;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 500;
+        }
+        
+        #controls p {
+            margin: 3px 0;
+            font-size: 11px;
+            line-height: 1.3;
+            color: rgba(255, 255, 255, 0.6);
         }
         #loading {
             position: absolute;
@@ -102,13 +118,13 @@
             transform: translateY(-1px);
         }
         
-        /* 聊天按钮样式 */
+        /* 聊天按钮样式 - 基础样式，位置由JS控制 */
         #chat-button {
-            position: absolute;
-            top: 110px;
-            left: 605px;
-            width: 60px;
-            height: 60px;
+            position: fixed;
+            top: 165px; /* 默认位置（标签下方 + 元素间距），将被JS覆盖 */
+            left: 100px; /* 默认位置（向左移动50px），将被JS覆盖 */
+            width: 60px; /* 默认大小，将被JS覆盖 */
+            height: 60px; /* 默认大小，将被JS覆盖 */
             border-radius: 50%;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -128,22 +144,23 @@
             border-color: rgba(255, 255, 255, 0.4);
         }
         
-        /* 聊天图标 */
+        /* 聊天图标 - 基础样式，大小由JS控制 */
         #chat-button svg {
-            width: 30px;
-            height: 30px;
+            width: 28px; /* 默认大小，将被JS覆盖 */
+            height: 28px; /* 默认大小，将被JS覆盖 */
+            transition: all 0.3s ease;
         }
         
-        /* 聊天标签样式 */
+        /* 聊天标签样式 - 基础样式，位置和大小由JS控制 */
         #chat-label {
-            position: absolute;
-            top: 60px;
-            left: 590px;
+            position: fixed;
+            top: 120px; /* 默认位置（110px + 10px间距），将被JS覆盖 */
+            left: 100px; /* 默认位置（向左移动50px），将被JS覆盖 */
             color: white;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 6px 12px;
-            border-radius: 16px;
-            font-size: 13px;
+            padding: 6px 12px; /* 默认大小，将被JS覆盖 */
+            border-radius: 16px; /* 默认大小，将被JS覆盖 */
+            font-size: 13px; /* 默认大小，将被JS覆盖 */
             font-weight: 600;
             z-index: 299;
             white-space: nowrap;
@@ -154,6 +171,7 @@
             transition: all 0.3s ease;
             line-height: 1.2;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            max-width: 200px; /* 默认最大宽度，将被JS覆盖 */
         }
         
         /* 当聊天按钮悬停时，标签高亮显示 */
@@ -164,14 +182,14 @@
             filter: brightness(1.1);
         }
         
-        /* 聊天窗口样式 */
+        /* 聊天窗口样式 - 基础样式，位置和大小由JS控制 */
         #chat-window {
-            position: absolute;
-            top: 85px;
-            left: 675px;
+            position: fixed;
+            top: 165px; /* 默认位置（按钮右下方），将被JS覆盖 */
+            left: 170px; /* 默认位置（按钮右下方，向左移动50px），将被JS覆盖 */
             transform: none;
-            width: 450px;
-            height: 240px;
+            width: 400px; /* 默认大小，将被JS覆盖 */
+            height: 300px; /* 默认大小，将被JS覆盖 */
             background-color: #ffffff;
             border-radius: 10px;
             z-index: 300;
@@ -181,10 +199,6 @@
             box-shadow: 0 5px 25px rgba(0, 0, 0, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.2);
             resize: both;
-            min-width: 300px;
-            min-height: 200px;
-            max-width: 800px;
-            max-height: 600px;
         }
         
         /* 聊天窗口调整大小的标记 */
@@ -263,6 +277,8 @@
             overflow: hidden;
             border-radius: 0 0 10px 10px;
         }
+        
+        /* 所有响应式调整都由JavaScript控制，移除媒体查询冲突 */
     </style>
 </head>
 <body>

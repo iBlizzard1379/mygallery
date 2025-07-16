@@ -6,7 +6,7 @@ set -e
 # 配置变量
 IMAGE_NAME="ai-gallery"
 DOCKER_HUB_USERNAME="iblizzard1379"  # 用户需要填写自己的Docker Hub用户名
-VERSION="v1.1"
+VERSION="v1.2"
 LATEST_TAG="latest"
 
 # 颜色输出
