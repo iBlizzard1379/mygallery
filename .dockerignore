@@ -52,6 +52,7 @@ dist/
 .env
 .env.local
 .env.production
+.env.docker
 
 # 文档
 README*.md
@@ -68,4 +69,10 @@ uv.lock
 # 临时和备份文件
 *.tmp
 *.bak
-*.backup 
+*.backup
+scripts/
+tests/
+docs/backup/
+docs/deployment/
+docs/optimization/
+docs/api/

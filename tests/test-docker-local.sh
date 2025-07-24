@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # AI知识画廊 Docker 本地测试脚本
-# 使用方法：./test-docker-local.sh
+# 使用方法：./tests/test-docker-local.sh
 
 set -e
 

@@ -1,21 +1,58 @@
 version: '3.8'
 
 services:
+  # 默认配置 - 精简版
   ai-gallery:
-    image: iblizzard1379/ai-gallery:v1.2
+    build:
+      context: .
+      dockerfile: Dockerfile.standard
     container_name: ai-gallery
     ports:
       - "8000:8000"
     env_file:
-      - .env.docker
+      - .env
     volumes:
       - ./vector_db:/app/vector_db
       - ./logs:/app/logs
-      - ./images:/app/images  # 如果需要持久化上传的图片
+      - ./images:/app/images
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s 
+      start_period: 30s
+
+  # 最小化版本
+  ai-gallery-minimal:
+    build:
+      context: .
+      dockerfile: Dockerfile.standard.minimal
+    container_name: ai-gallery-minimal
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./vector_db:/app/vector_db
+      - ./logs:/app/logs
+      - ./images:/app/images
+    restart: unless-stopped
+    profiles: ["minimal"]
+
+  # 完整功能版本
+  ai-gallery-full:
+    build:
+      context: .
+      dockerfile: Dockerfile.standard.full
+    container_name: ai-gallery-full
+    ports:
+      - "8002:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./vector_db:/app/vector_db
+      - ./logs:/app/logs
+      - ./images:/app/images
+    restart: unless-stopped
+    profiles: ["full"] 

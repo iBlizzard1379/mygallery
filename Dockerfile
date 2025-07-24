@@ -1,58 +1,48 @@
-# 使用Python 3.12作为基础镜像（3.13可能还未稳定发布）
+# 完整功能Docker镜像 - 包含所有功能
 FROM python:3.12-slim
 
-# 设置环境变量
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
-ENV PORT=8000
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PORT=8000 \
+    PATH=/root/.local/bin:$PATH
 
-# 安装系统依赖（OCR和图像处理需要）
-RUN apt-get update && apt-get install -y \
+# 完整系统依赖（但仍然优化过的）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # 完整OCR支持
     tesseract-ocr \
     tesseract-ocr-chi-sim \
     tesseract-ocr-chi-tra \
     tesseract-ocr-eng \
-    libgl1-mesa-glx \
+    # EasyOCR需要的额外依赖
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
     libgomp1 \
-    libgdal-dev \
+    libgl1-mesa-glx \
+    # 网络工具
     curl \
-    wget \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && apt-get autoremove -y
 
-# 创建工作目录
 WORKDIR /app
 
 # 安装uv包管理器
 RUN pip install --no-cache-dir uv
 
 # 复制依赖文件
-COPY requirements.txt pyproject.toml ./
+COPY requirements-docker-build.txt ./
 
 # 安装Python依赖
-RUN uv pip install --system --no-cache -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements-docker-build.txt
 
 # 复制项目文件
 COPY . .
 
-# 创建必要的目录
+# 创建目录
 RUN mkdir -p vector_db logs
 
-# 设置权限
-RUN chmod +x start_server.sh || true
-
-# 暴露端口
 EXPOSE 8000
 
-# 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8000/ || exit 1
 
-# 启动命令
 CMD ["python", "server.py"] 

@@ -61,7 +61,7 @@ fi
 # 检查镜像是否存在
 if ! $CONTAINER_CMD image exists ${FULL_IMAGE_NAME}:${VERSION}; then
     echo -e "${RED}错误：镜像 ${FULL_IMAGE_NAME}:${VERSION} 不存在${NC}"
-    echo -e "${YELLOW}请先运行 ./build-docker.sh 构建镜像${NC}"
+    echo -e "${YELLOW}请先运行 ./scripts/build-docker.sh 构建镜像${NC}"
     exit 1
 fi
 

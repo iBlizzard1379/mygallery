@@ -1,0 +1,31 @@
+# AMD64优化配置 - 移除大型依赖，保留核心功能
+
+# 核心依赖 - 基础AI功能
+python-dotenv==1.1.0
+langchain==0.3.25
+langchain-community==0.3.23
+langchain-openai==0.3.16
+langchain-core==0.3.58
+langchain-text-splitters==0.3.8
+langchain-faiss==0.1.1
+faiss-cpu==1.11.0
+pypdf==5.4.0
+python-docx>=1.2.0
+openpyxl>=3.1.5
+pillow>=11.2.1
+pytesseract>=0.3.13
+watchdog==6.0.0
+openai==1.77.0
+pydantic==2.11.4
+psutil==6.1.0
+requests==2.32.3
+
+# 基础Office文档处理
+python-pptx>=1.0.2
+pandas>=2.3.0
+
+# 互联网搜索工具
+tavily-python==0.7.1
+
+# 注意：移除了easyocr（>1GB）和google-search-results以减少镜像大小
+# 注意：移除了docx2txt（与python-docx功能重复） 

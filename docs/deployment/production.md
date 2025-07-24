@@ -56,16 +56,16 @@ source ~/.bashrc  # 或 source ~/.zshrc
 cd mygallery
 
 # 使用部署脚本一键部署
-./deploy_intranet.sh
+./scripts/deploy_intranet.sh
 
 # 或者指定参数部署
-./deploy_intranet.sh --port 9000 --max-sessions 100
+./scripts/deploy_intranet.sh --port 9000 --max-sessions 100
 ```
 
 ### 4. 查看部署选项
 
 ```bash
-./deploy_intranet.sh --help
+./scripts/deploy_intranet.sh --help
 ```
 
 ## ⚙️ 配置说明
@@ -200,7 +200,7 @@ python3 test_concurrent.py --users 30 --requests 10
 netstat -tlnp | grep :8000
 
 # 更换端口
-./deploy_intranet.sh --port 9000
+./scripts/deploy_intranet.sh --port 9000
 ```
 
 **2. 内存不足**
@@ -242,7 +242,7 @@ python3 --version
 
 ```bash
 export DEBUG=true
-./deploy_intranet.sh
+./scripts/deploy_intranet.sh
 ```
 
 ## 🔒 安全建议
@@ -271,10 +271,10 @@ export HOST=192.168.1.100
 **负载均衡部署**：
 ```bash
 # 服务器1
-./deploy_intranet.sh --port 8000
+./scripts/deploy_intranet.sh --port 8000
 
 # 服务器2  
-./deploy_intranet.sh --port 8001
+./scripts/deploy_intranet.sh --port 8001
 
 # 使用Nginx负载均衡
 ```

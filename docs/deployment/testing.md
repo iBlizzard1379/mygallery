@@ -41,7 +41,7 @@ code .env.docker
 
 2. **运行自动化测试**:
 ```bash
-./test-docker-local.sh
+./tests/test-docker-local.sh
 ```
 
 ### 方法2: 手动测试步骤

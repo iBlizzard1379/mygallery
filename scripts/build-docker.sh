@@ -78,7 +78,7 @@ $CONTAINER_CMD images | grep ${FULL_IMAGE_NAME}
 
 echo
 echo -e "${GREEN}=== 构建完成 ===${NC}"
-echo -e "${YELLOW}下一步：运行 ./publish-docker.sh 发布到Docker Hub${NC}"
+echo -e "${YELLOW}下一步：运行 ./scripts/publish-docker.sh 发布到Docker Hub${NC}"
 echo
 echo -e "${YELLOW}本地测试命令：${NC}"
 echo "${CONTAINER_CMD} run -p 8000:8000 ${FULL_IMAGE_NAME}:${VERSION}" 
